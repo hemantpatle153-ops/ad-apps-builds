@@ -1,0 +1,65 @@
+name: Feeds
+
+# Every 15 minutes: read the official job pages, extract and fact-check new
+# notices with DeepSeek, build the quiz content, and publish the JSON files
+# to the feed-data branch that Vacancy Bell and Roz Quiz read.
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+    inputs:
+      part:
+        description: "jobs, quiz or both"
+        default: both
+
+concurrency:
+  group: feeds
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: feeds/requirements.txt
+      - name: OCR tools for scanned notices
+        run: sudo apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-hin poppler-utils >/dev/null
+      - run: pip install -r feeds/requirements.txt
+      - name: Check out the published files
+        run: |
+          if git ls-remote --exit-code --heads origin feed-data >/dev/null; then
+            git fetch --depth 1 origin feed-data
+            git worktree add data origin/feed-data
+          else
+            git worktree add --detach data
+            git -C data checkout --orphan feed-data
+            git -C data rm -rfq .
+          fi
+      - name: Run the pipeline
+        working-directory: feeds
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        run: |
+          case "${{ github.event.inputs.part }}" in
+            jobs) python -m feedbot run --data ../data --jobs ;;
+            quiz) python -m feedbot run --data ../data --quiz ;;
+            *) python -m feedbot run --data ../data ;;
+          esac
+      - name: Publish
+        if: always()
+        working-directory: data
+        run: |
+          git config user.name "feeds-bot"
+          git config user.email "feeds-bot@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then echo "nothing new"; exit 0; fi
+          git commit -qm "feeds: $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push -q origin HEAD:feed-data
