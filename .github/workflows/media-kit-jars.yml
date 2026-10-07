@@ -1,0 +1,23 @@
+# Mirrors the media_kit libmpv jars into this branch, because the build
+# laptop's network can't reach GitHub's release download host.
+name: media-kit-jars
+on:
+  push:
+    branches: [media-kit-jars]
+    paths: [.github/workflows/media-kit-jars.yml]
+permissions:
+  contents: write
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p media_kit/v1.1.7 && cd media_kit/v1.1.7
+          for a in arm64-v8a armeabi-v7a x86_64 x86; do
+            curl -fsSL -o default-$a.jar https://github.com/media-kit/libmpv-android-video-build/releases/download/v1.1.7/default-$a.jar
+          done
+          md5sum *.jar
+          cd ../..
+          git config user.name github-actions && git config user.email actions@github.com
+          git add media_kit && git commit -m "Mirror media_kit libmpv v1.1.7 jars" && git push
