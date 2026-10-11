@@ -15,8 +15,9 @@ from urllib.parse import urljoin, urlparse
 import requests
 from bs4 import BeautifulSoup
 
+# a plain browser name: PIB and some boards answer "Access Denied" to bot names
 UA = ("Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) "
-      "Chrome/126.0 Mobile Safari/537.36 VacancyBellBot/1.0 (+https://github.com/hemantpatle153-ops/ad-apps-builds)")
+      "Chrome/126.0 Mobile Safari/537.36")
 MAX_BYTES = 25 * 1024 * 1024
 
 

@@ -165,11 +165,17 @@ def run_quiz(store: Store, llm: Llm, fetcher: Fetcher, ca_sources: list[Source],
     store.write("state/pib.json", pib)
 
     idx = store.quiz_index()
-    # 2. yesterday's current affairs, written once
+    # 2. yesterday's current affairs, written once (on the very first day,
+    #    when nothing was collected yesterday, today's releases are used)
     yday = (dt.date.fromisoformat(today) - dt.timedelta(days=1)).isoformat()
-    if not store.exists(f"quiz/current_affairs/{yday}.json") and not _out_of_time(deadline):
-        day_items = [(k, v) for k, v in pib.items() if v.get("day") == yday]
+    ca_day = yday
+    if not idx.get("currentAffairs") and not any(v.get("day") == yday for v in pib.values()):
+        ca_day = today
+    if (not store.exists(f"quiz/current_affairs/{ca_day}.json") and idx.get("caTried") != ca_day
+            and not _out_of_time(deadline)):
+        day_items = [(k, v) for k, v in pib.items() if v.get("day") == ca_day]
         if day_items:
+            idx["caTried"] = ca_day  # one attempt per day, so failures don't cost every run
             report = quiz_mod.Report()
             listing = "\n".join(f"{k}: {v['title']}" for k, v in day_items[:120])
             pick = llm.json(quiz_mod.CA_PICK_SYSTEM, f"Pick up to {CA_PER_DAY} ids:\n{listing}").get("pick") or []
@@ -185,14 +191,14 @@ def run_quiz(store: Store, llm: Llm, fetcher: Fetcher, ca_sources: list[Source],
                     report.reject(f"release {k} too short")
                     continue
                 note, kept = quiz_mod.current_affairs_item(llm, title=v["title"], url=v["url"], text=body,
-                                                           date=yday, index=i + 1, report=report)
+                                                           date=ca_day, index=i + 1, report=report)
                 if note:
                     notes.append(note)
                 questions += [q for q in kept if not question_errors(q)]
             if notes:
-                store.write(f"quiz/current_affairs/{yday}.json",
-                            {"schema": 1, "date": yday, "notes": notes, "questions": questions})
-                idx.setdefault("currentAffairs", []).append(yday)
+                store.write(f"quiz/current_affairs/{ca_day}.json",
+                            {"schema": 1, "date": ca_day, "notes": notes, "questions": questions})
+                idx.setdefault("currentAffairs", []).append(ca_day)
             qs["ca"] = {"notes": len(notes), "questions": len(questions), "rejected": report.rejected,
                         "reasons": report.reasons[:30]}
     store.save_quiz_index(idx, now=_ts(now))

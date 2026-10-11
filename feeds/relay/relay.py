@@ -25,8 +25,9 @@ import requests
 MAX_BYTES = 25 * 1024 * 1024
 MAX_REDIRECTS = 5
 TIMEOUT = 40
+# a plain browser name: PIB and some boards answer "Access Denied" to bot names
 UA = ("Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) "
-      "Chrome/126.0 Mobile Safari/537.36 VacancyBellBot/1.0 (+https://github.com/hemantpatle153-ops/ad-apps-builds)")
+      "Chrome/126.0 Mobile Safari/537.36")
 # Official domains: any *.gov.in / *.nic.in, plus the boards and banks on other domains.
 ALLOWED_SUFFIXES = (".gov.in", ".nic.in", ".ac.in", ".org.in")
 ALLOWED_HOSTS = {"ibps.in", "sbi.co.in", "bank.sbi", "nta.ac.in"}

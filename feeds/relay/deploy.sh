@@ -16,6 +16,10 @@ SERVICE=feeds-relay
 
 echo "Turning on Cloud Run and Cloud Build in $PROJECT (needs billing on; this stays in the free tier)..."
 gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com
+# new projects: the default build account needs permission to build Cloud Run sources
+PN="$(gcloud projects describe "$PROJECT" --format='value(projectNumber)')"
+gcloud projects add-iam-policy-binding "$PROJECT" --condition=None --quiet \
+  --member="serviceAccount:${PN}-compute@developer.gserviceaccount.com" --role=roles/run.builder >/dev/null
 
 # keep the same token on re-deploys so the GitHub secret stays valid
 TOKEN="$(gcloud run services describe "$SERVICE" --region "$REGION" \

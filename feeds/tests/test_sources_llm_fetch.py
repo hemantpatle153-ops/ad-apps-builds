@@ -308,4 +308,4 @@ def test_fetcher_rejects_huge_files(monkeypatch):
 def test_fetcher_sets_user_agent():
     s = FakeGetSession([])
     fetch.Fetcher(session=s)
-    assert "VacancyBellBot" in s.headers["User-Agent"]
+    assert s.headers["User-Agent"].startswith("Mozilla/5.0") and "Bot" not in s.headers["User-Agent"]

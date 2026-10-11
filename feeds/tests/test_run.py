@@ -220,6 +220,11 @@ def test_quiz_day_one_and_two(tmp_path):
     assert idx["bankDay"] == "2026-10-06" and len(idx["banks"]) == len(quiz.BANK_SUBJECTS)
     assert all(b["count"] == 10 for b in idx["banks"])
     assert idx["daily"] == ["2026-10-06"], "70 bank questions are enough for a quiz"
+    # day one: nothing was collected yesterday, so today's releases become current affairs
+    ca1 = store.read("quiz/current_affairs/2026-10-06.json")
+    assert len(ca1["notes"]) == 1 and len(ca1["questions"]) == 2
+    d1 = store.read("quiz/daily/2026-10-06.json")
+    assert sum(x["subject"] == "current_affairs" for x in d1["questions"]) == 2
     # next day: yesterday's PIB releases become current affairs
     day2 = day1 + dt.timedelta(days=1)
     main_mod.run_quiz(store, llm, FakeFetcher(pages), [CA_SRC], day2, status := {})
@@ -229,8 +234,7 @@ def test_quiz_day_one_and_two(tmp_path):
     idx = store.read("quiz/index.json")
     assert idx["currentAffairs"] == ["2026-10-06"] and idx["daily"] == ["2026-10-07", "2026-10-06"]
     d2 = store.read("quiz/daily/2026-10-07.json")
-    assert sum(x["subject"] == "current_affairs" for x in d2["questions"]) == 2
-    d1 = store.read("quiz/daily/2026-10-06.json")
+    assert sum(x["subject"] == "current_affairs" for x in d2["questions"]) == 0, "already asked yesterday"
     assert not {x["id"] for x in d1["questions"]} & {x["id"] for x in d2["questions"]}
 
 
@@ -394,3 +398,30 @@ def test_main_passes_run_minutes(tmp_path, monkeypatch):
     assert main_mod.main(["run", "--data", str(tmp_path), "--minutes", "2"]) == 0
     assert seen["jobs"] == seen["quiz"]
     assert start + 110 < seen["jobs"] < start + 130
+
+
+def test_current_affairs_tried_once_per_day(tmp_path):
+    store = Store(tmp_path)
+    pages = {CA_SRC.url: RSS}  # the release page itself can't be fetched
+    llm = quiz_llm()
+    status = {}
+    main_mod.run_quiz(store, llm, FakeFetcher(pages), [CA_SRC], NOW, status)
+    assert status["quiz"]["ca"]["notes"] == 0
+    picks = llm.count(quiz.CA_PICK_SYSTEM)
+    assert picks == 1
+    main_mod.run_quiz(store, llm, FakeFetcher(pages), [CA_SRC], NOW + dt.timedelta(minutes=15), {})
+    assert llm.count(quiz.CA_PICK_SYSTEM) == picks
+
+
+def test_current_affairs_prefers_yesterday_when_collected(tmp_path):
+    store = Store(tmp_path)
+    today = quiz.today_ist(NOW)
+    yday = (dt.date.fromisoformat(today) - dt.timedelta(days=1)).isoformat()
+    store.write("state/pib.json", {"1999": {"day": yday, "title": "Old release",
+                                            "url": "https://pib.gov.in/PressReleaseIframePage.aspx?PRID=1999"}})
+    pages = {CA_SRC.url: RSS, "https://pib.gov.in/PressReleaseIframePage.aspx?PRID=1999": release_page()}
+    llm = quiz_llm()
+    llm.pick = ["1999"]
+    main_mod.run_quiz(store, llm, FakeFetcher(pages), [CA_SRC], NOW, {})
+    assert store.exists(f"quiz/current_affairs/{yday}.json")
+    assert not store.exists(f"quiz/current_affairs/{today}.json")
