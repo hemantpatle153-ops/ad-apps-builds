@@ -153,6 +153,8 @@ def run_quiz(store: Store, llm: Llm, fetcher: Fetcher, ca_sources: list[Source],
     for src in ca_sources:
         try:
             page = fetcher.get(src.url)
+            if page.status >= 400:
+                raise RuntimeError(f"HTTP {page.status}")
             items = _rss_items(page.text())
             qs[f"rss:{src.id}"] = len(items)
             for title, link in items:

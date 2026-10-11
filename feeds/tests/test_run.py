@@ -425,3 +425,15 @@ def test_current_affairs_prefers_yesterday_when_collected(tmp_path):
     main_mod.run_quiz(store, llm, FakeFetcher(pages), [CA_SRC], NOW, {})
     assert store.exists(f"quiz/current_affairs/{yday}.json")
     assert not store.exists(f"quiz/current_affairs/{today}.json")
+
+
+def test_rss_http_error_is_reported(tmp_path):
+    from feedbot.fetch import Page
+    status = {}
+
+    class Denied:
+        def get(self, url):
+            return Page(url, 403, "text/html", b"<html>Access Denied</html>")
+
+    main_mod.run_quiz(Store(tmp_path), quiz_llm(), Denied(), [CA_SRC], NOW, status)
+    assert status["quiz"][f"rss:{CA_SRC.id}"] == "error: HTTP 403"
