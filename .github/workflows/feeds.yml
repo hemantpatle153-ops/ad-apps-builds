@@ -5,7 +5,9 @@ name: Feeds
 # to the feed-data branch that Vacancy Bell and Roz Quiz read.
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    # Off the :00/:15/:30/:45 marks: GitHub delays or drops schedules there
+    # under load, and */15 never fired after this workflow landed.
+    - cron: "7,22,37,52 * * * *"
   workflow_dispatch:
     inputs:
       part:
