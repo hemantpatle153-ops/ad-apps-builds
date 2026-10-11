@@ -61,7 +61,7 @@ All `PostSummary` fields plus:
   "links": [{"label": Text, "url": "https://..."}],   // apply, official notice, admit card, result...
   "officialNoticeUrl": "https://...pdf"|null,
   "sourcePageUrl": "https://ssc.gov.in/...",
-  "check": {"model": "deepseek-flash", "rounds": 2, "factsChecked": 31, "factsDropped": 1}
+  "check": {"model": "claude-haiku-5-5", "verifier": "claude-opus-5-5", "rounds": 2, "factsChecked": 31, "factsDropped": 1}
 }
 ```
 

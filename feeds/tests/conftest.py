@@ -131,3 +131,10 @@ class FakeLlm:
 @pytest.fixture
 def extraction() -> dict[str, Any]:
     return good_extraction()
+
+
+@pytest.fixture(autouse=True)
+def no_ai_keys(monkeypatch):
+    """Tests never see the keys or provider choice of the machine running them."""
+    for var in ("ANTHROPIC_API_KEY", "GEMINI_API_KEY", "DEEPSEEK_API_KEY", "LLM_PROVIDER"):
+        monkeypatch.delenv(var, raising=False)

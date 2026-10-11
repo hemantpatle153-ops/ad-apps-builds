@@ -122,7 +122,7 @@ def solve(llm: llm_mod.Llm, questions: list[dict[str, Any]], *, passage: str | N
         opts = "\n".join(f"  {k}) {qq['options'][j]['en']}" for k, j in enumerate(perm))
         lines.append(f"{i + 1}. {qq['q']['en']}\n{opts}")
     user = ("" if passage is None else f"PASSAGE:\n{passage[:20000]}\n\n") + "QUESTIONS:\n" + "\n".join(lines)
-    reply = llm.json(SOLVE_SYSTEM, user, model=llm_mod.VERIFY_MODEL, max_tokens=1500)
+    reply = llm.json(SOLVE_SYSTEM, user, model=llm_mod.VERIFY, max_tokens=1500)
     got: dict[int, int | None] = {}
     for r in reply.get("answers") or []:
         try:

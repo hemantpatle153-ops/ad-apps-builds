@@ -347,7 +347,7 @@ def verify(llm: llm_mod.Llm, data: dict[str, Any], source: str) -> list[Failure]
         return []
     listing = "\n".join(f"{i + 1}. {c}" for i, (_, c) in enumerate(claims))
     reply = llm.json(VERIFY_SYSTEM, f"NOTICE:\n{source[:MAX_SOURCE_CHARS]}\n\nCLAIMS:\n{listing}",
-                     model=llm_mod.VERIFY_MODEL, max_tokens=3000)
+                     model=llm_mod.VERIFY, max_tokens=3000)
     verdicts: dict[int, str] = {}
     for r in reply.get("results") or []:
         try:
@@ -408,7 +408,8 @@ def process_notice(llm: llm_mod.Llm, source: Source, *, notice_url: str, link_te
         return Outcome(None, "review", reasons + ["job without any confirmed date"], rounds,
                        total_before, dropped)
     post = build_post(data, source, notice_url=notice_url, now=now, rounds=rounds,
-                      checked=total_before, dropped=dropped)
+                      checked=total_before, dropped=dropped,
+                      models=(getattr(llm, "extract_model", None), getattr(llm, "verify_model", None)))
     return Outcome(post, "published", reasons, rounds, total_before, dropped)
 
 
@@ -424,7 +425,8 @@ def post_id(source: Source, title_en: str, notice_url: str) -> str:
 
 
 def build_post(data: dict[str, Any], source: Source, *, notice_url: str, now: dt.datetime,
-               rounds: int, checked: int, dropped: int) -> dict[str, Any]:
+               rounds: int, checked: int, dropped: int,
+               models: tuple[str | None, str | None] = (None, None)) -> dict[str, Any]:
     ts = now.astimezone(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     title = _strip(data["title"])
     states = [s for s in ((data.get("states") or {}).get("value") or []) if s in STATES] or list(source.states)
@@ -470,7 +472,7 @@ def build_post(data: dict[str, Any], source: Source, *, notice_url: str, now: dt
         "links": links,
         "officialNoticeUrl": notice_url if is_pdf else None,
         "sourcePageUrl": notice_url if not is_pdf else source.url,
-        "check": {"model": llm_mod.EXTRACT_MODEL, "verifier": llm_mod.VERIFY_MODEL, "rounds": rounds,
+        "check": {"model": models[0], "verifier": models[1], "rounds": rounds,
                   "factsChecked": checked, "factsDropped": dropped},
     }
 

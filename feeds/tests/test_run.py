@@ -274,7 +274,7 @@ def test_main_without_key_writes_status_and_exits_cleanly(tmp_path, monkeypatch)
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
     assert main_mod.main(["run", "--data", str(tmp_path)]) == 0
     status = json.loads((tmp_path / "status.json").read_text())
-    assert "DEEPSEEK_API_KEY" in status["error"]
+    assert "no AI key is set" in status["error"]
 
 
 def test_main_runs_both_parts_and_records_usage(tmp_path, monkeypatch):
@@ -286,6 +286,23 @@ def test_main_runs_both_parts_and_records_usage(tmp_path, monkeypatch):
     assert calls == ["jobs", "quiz"]
     status = json.loads((tmp_path / "status.json").read_text())
     assert status["llm"]["calls"] == 0 and status["run"].endswith("Z")
+    assert status["llm"]["provider"] == "deepseek"
+
+
+@pytest.mark.parametrize("var,provider", [("ANTHROPIC_API_KEY", "claude"), ("GEMINI_API_KEY", "gemini")])
+def test_main_uses_whichever_key_is_set(tmp_path, monkeypatch, var, provider):
+    monkeypatch.setenv(var, "k")
+    monkeypatch.setattr(main_mod, "run_jobs", lambda *a, **k: None)
+    monkeypatch.setattr(main_mod, "run_quiz", lambda *a, **k: None)
+    assert main_mod.main(["run", "--data", str(tmp_path)]) == 0
+    assert json.loads((tmp_path / "status.json").read_text())["llm"]["provider"] == provider
+
+
+def test_main_bad_provider_choice_writes_status(tmp_path, monkeypatch):
+    monkeypatch.setenv("LLM_PROVIDER", "gemini")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+    assert main_mod.main(["run", "--data", str(tmp_path)]) == 0
+    assert "GEMINI_API_KEY is not set" in json.loads((tmp_path / "status.json").read_text())["error"]
 
 
 @pytest.mark.parametrize("flag,expected", [("--jobs", ["jobs"]), ("--quiz", ["quiz"])])

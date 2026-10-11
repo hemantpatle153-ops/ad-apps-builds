@@ -239,7 +239,7 @@ def test_verifier_uses_the_stronger_model(extraction):
     llm = FakeLlm(extract=[extraction])
     run(llm)
     models = {s: m for s, _, m in llm.calls}
-    assert models[jobs.VERIFY_SYSTEM] == jobs.llm_mod.VERIFY_MODEL
+    assert models[jobs.VERIFY_SYSTEM] == jobs.llm_mod.VERIFY
 
 
 def test_prompt_contains_notice_links_and_shape(extraction):
@@ -299,3 +299,16 @@ def test_dates_far_out_of_range_rejected(days, extraction):
     text = NOTICE + f"\nSpecial date {d.day:02d}.{d.month:02d}.{d.year}\n"
     extraction["lastDate"] = {"value": d.isoformat(), "quote": f"Special date {d.day:02d}.{d.month:02d}.{d.year}"}
     assert "lastDate" in paths(jobs.check_facts(extraction, text, LINKS, today=NOW.date()))
+
+
+def test_post_records_the_models_that_checked_it(extraction):
+    llm = FakeLlm(extract=[extraction])
+    llm.extract_model, llm.verify_model = "claude-haiku-5-5", "claude-opus-5-5"
+    check = run(llm).post["check"]
+    assert check["model"] == "claude-haiku-5-5" and check["verifier"] == "claude-opus-5-5"
+    assert check["rounds"] == 1
+
+
+def test_post_check_models_unknown_without_client_names(extraction):
+    check = run(FakeLlm(extract=[extraction])).post["check"]
+    assert check["model"] is None and check["verifier"] is None

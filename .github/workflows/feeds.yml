@@ -1,7 +1,7 @@
 name: Feeds
 
 # Every 15 minutes: read the official job pages, extract and fact-check new
-# notices with DeepSeek, build the quiz content, and publish the JSON files
+# notices with Claude, Gemini or DeepSeek, build the quiz content, and publish the JSON files
 # to the feed-data branch that Vacancy Bell and Roz Quiz read.
 on:
   schedule:
@@ -46,7 +46,16 @@ jobs:
       - name: Run the pipeline
         working-directory: feeds
         env:
+          # Any one AI key is enough; with several, LLM_PROVIDER picks one
+          # (claude, gemini or deepseek), else Claude > Gemini > DeepSeek.
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
+          CLAUDE_MODEL: ${{ vars.CLAUDE_MODEL }}
+          CLAUDE_VERIFY_MODEL: ${{ vars.CLAUDE_VERIFY_MODEL }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          GEMINI_VERIFY_MODEL: ${{ vars.GEMINI_VERIFY_MODEL }}
         run: |
           case "${{ github.event.inputs.part }}" in
             jobs) python -m feedbot run --data ../data --jobs ;;

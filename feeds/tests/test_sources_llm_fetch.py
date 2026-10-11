@@ -147,7 +147,7 @@ def test_deepseek_sends_json_mode_and_key():
     url, body, headers = s.posts[0]
     assert url == "https://api.deepseek.com/chat/completions"
     assert body["response_format"] == {"type": "json_object"} and body["temperature"] == 0
-    assert body["model"] == llm.EXTRACT_MODEL and headers["Authorization"] == "Bearer sk-test"
+    assert body["model"] == llm.DEEPSEEK_EXTRACT_MODEL and headers["Authorization"] == "Bearer sk-test"
     assert c.usage.calls == 1 and c.usage.prompt_tokens == 10 and c.usage.completion_tokens == 5
 
 

@@ -5,23 +5,36 @@ publishes JSON to the `feed-data` branch. The format is in [SCHEMA.md](SCHEMA.md
 
 ## Setup (once)
 
-Add the DeepSeek key as a repository secret: Settings → Secrets and variables
-→ Actions → New repository secret, name `DEEPSEEK_API_KEY`. Without it the
-run only writes `status.json` saying the key is missing.
+Add one AI key as a repository secret: Settings → Secrets and variables →
+Actions → New repository secret. Any one is enough:
+
+| Secret | AI | Extracts with | Checks with |
+|---|---|---|---|
+| `ANTHROPIC_API_KEY` | Claude | `claude-haiku-5-5` | `claude-opus-5-5` |
+| `GEMINI_API_KEY` | Gemini | `gemini-flash-latest` | `gemini-flash-latest` |
+| `DEEPSEEK_API_KEY` | DeepSeek | `deepseek-flash` | `deepseek-v4-pro` |
+
+With several keys set, Claude is used first, then Gemini, then DeepSeek. To
+choose, add a repository *variable* (same page, Variables tab) `LLM_PROVIDER`
+set to `claude`, `gemini` or `deepseek`. The models can be changed with the
+variables `CLAUDE_MODEL`, `CLAUDE_VERIFY_MODEL`, `GEMINI_MODEL` and
+`GEMINI_VERIFY_MODEL` (DeepSeek: `DEEPSEEK_MODEL`, `DEEPSEEK_VERIFY_MODEL`).
+Switching needs no code change and no app update: the apps only read the
+published files. Without any key the run only writes `status.json` saying so.
 
 ## How a job notice gets published
 
 1. Each page in `sources.json` is read; links that look like notices
    (recruitment, admit card, result, answer key, syllabus) are new candidates.
    The first time a source is seen only its newest 6 notices are processed.
-2. The notice (HTML or PDF; scanned PDFs go through OCR) is sent to
-   `deepseek-flash`, which returns every fact with an exact quote.
+2. The notice (HTML or PDF; scanned PDFs go through OCR) is sent to the
+   extraction model, which returns every fact with an exact quote.
 3. Code checks every fact: the quote must be in the notice; dates, post
    counts, ages and fees must be written in that quote; English and Hindi
    must carry the same numbers; links must be in the notice. Failed facts go
    back to the model with the reason, up to 3 rounds. Facts that still fail
    are dropped.
-4. `deepseek-v4-pro` checks the remaining facts against the notice on its
+4. The checking model (a stronger one where the provider has it) checks the remaining facts against the notice on its
    own. Anything it can't confirm is dropped.
 5. A post missing its title or organisation, a job with no confirmed date,
    or a post that lost more than 40% of its facts is not published. It is
@@ -44,7 +57,7 @@ run only writes `status.json` saying the key is missing.
 
 `status.json` on the feed-data branch shows the last run: links found per
 source (0 means the page changed or blocks the runner), notices published or
-held for review, quiz counts, and DeepSeek calls and tokens.
+held for review, quiz counts, and which AI ran with its calls and tokens.
 
 ## Adding a source
 

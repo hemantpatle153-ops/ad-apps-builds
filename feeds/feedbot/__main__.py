@@ -15,7 +15,7 @@ from typing import Any
 from . import jobs as jobs_mod
 from . import quiz as quiz_mod
 from .fetch import Fetcher, document_text, html_links
-from .llm import DeepSeek, Llm, LlmError
+from .llm import Llm, LlmError, make_llm
 from .sources import Source, is_candidate, link_id, load_sources
 from .store import Store
 from .validate import post_errors, question_errors
@@ -242,7 +242,7 @@ def main(argv: list[str] | None = None) -> int:
     store = Store(args.data)
     status: dict[str, Any] = {"schema": 1, "run": _ts(now), "sources": {}}
     try:
-        llm = DeepSeek()
+        llm = make_llm()
     except LlmError as e:
         status["error"] = str(e)
         store.write("status.json", status)
@@ -262,7 +262,7 @@ def main(argv: list[str] | None = None) -> int:
         status["error"] = f"{type(e).__name__}: {str(e)[:300]}"
         traceback.print_exc()
         code = 1
-    status["llm"] = {"calls": llm.usage.calls, "promptTokens": llm.usage.prompt_tokens,
+    status["llm"] = {"provider": llm.name, "calls": llm.usage.calls, "promptTokens": llm.usage.prompt_tokens,
                      "completionTokens": llm.usage.completion_tokens, "byModel": llm.usage.by_model}
     store.write("status.json", status)
     return code
