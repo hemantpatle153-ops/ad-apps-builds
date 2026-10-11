@@ -308,4 +308,16 @@ def test_fetcher_rejects_huge_files(monkeypatch):
 def test_fetcher_sets_user_agent():
     s = FakeGetSession([])
     fetch.Fetcher(session=s)
-    assert s.headers["User-Agent"].startswith("Mozilla/5.0") and "Bot" not in s.headers["User-Agent"]
+    ua = s.headers["User-Agent"]
+    assert ua == fetch.UA
+    # PIB and UPSC answer 403 to UAs naming Chrome or a bot
+    assert "bot" not in ua.lower() and "chrome" not in ua.lower()
+
+
+def test_html_text_keeps_page_wide_form_and_drops_search_box():
+    html = ("<html><body><form id='form1'><form><input name='q'>Search jobs</form>"
+            "<h2>Cabinet approves mission</h2><p>" + "The mission covers critical minerals. " * 20 +
+            "</p></form></body></html>")
+    text = fetch.html_text(html)
+    assert "Cabinet approves mission" in text and "critical minerals" in text
+    assert "Search jobs" not in text

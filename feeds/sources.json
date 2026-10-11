@@ -18,7 +18,7 @@
     {"id": "mppsc", "name": "Madhya Pradesh Public Service Commission", "category": "state_psc", "kind": "html_links", "url": "https://mppsc.mp.gov.in/", "states": ["MP"]}
   ],
   "currentAffairs": [
-    {"id": "pib-1", "name": "PIB", "kind": "rss", "url": "https://pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=3"},
-    {"id": "pib-2", "name": "PIB", "kind": "rss", "url": "https://pib.gov.in/RssMain.aspx?ModId=6&Lang=2&Regid=3"}
+    {"id": "pib-1", "name": "PIB", "kind": "rss", "url": "https://www.pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=3&reg=3"},
+    {"id": "pib-2", "name": "PIB", "kind": "rss", "url": "https://www.pib.gov.in/RssMain.aspx?ModId=6&Lang=2&Regid=3&reg=3"}
   ]
 }

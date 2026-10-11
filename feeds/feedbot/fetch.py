@@ -15,9 +15,9 @@ from urllib.parse import urljoin, urlparse
 import requests
 from bs4 import BeautifulSoup
 
-# a plain browser name: PIB and some boards answer "Access Denied" to bot names
-UA = ("Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) "
-      "Chrome/126.0 Mobile Safari/537.36")
+# A user agent that names Chrome or a bot gets "403 Access Denied" from PIB
+# and UPSC; the bare token is accepted everywhere we read.
+UA = "Mozilla/5.0"
 MAX_BYTES = 25 * 1024 * 1024
 
 
@@ -112,8 +112,16 @@ class Fetcher:
 def html_text(html: str) -> str:
     """Readable text of an HTML page (scripts, styles and navigation removed)."""
     soup = BeautifulSoup(html, "html.parser")
-    for tag in soup(["script", "style", "noscript", "nav", "header", "footer", "svg", "form"]):
+    for tag in soup(["script", "style", "noscript", "nav", "header", "footer", "svg"]):
         tag.decompose()
+    # ASP.NET pages (PIB, Employment News) wrap the whole page in one <form>:
+    # keep that one's content, drop small forms such as search boxes.
+    total = len(soup.get_text(strip=True))
+    for tag in soup("form"):
+        if len(tag.get_text(strip=True)) > total / 2:
+            tag.unwrap()
+        else:
+            tag.decompose()
     lines = [ln.strip() for ln in soup.get_text("\n").splitlines()]
     return "\n".join(ln for ln in lines if ln)
 
