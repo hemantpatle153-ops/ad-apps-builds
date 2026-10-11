@@ -22,7 +22,7 @@ permissions:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -46,6 +46,7 @@ jobs:
             git -C data rm -rfq .
           fi
       - name: Run the pipeline
+        timeout-minutes: 35  # Publish still runs after a step timeout
         working-directory: feeds
         env:
           # Any one AI key is enough; with several, LLM_PROVIDER picks one

@@ -334,3 +334,63 @@ def test_same_notice_from_two_sites_is_published_once(tmp_path):
     main_mod.run_jobs(store, FakeLlm(extract=[make_extract()]), FakeFetcher(pages), [SRC, other], NOW, status)
     assert len(store.read("jobs/index.json")["posts"]) == 1
     assert "duplicate" in {v["status"] for v in store.read("state/seen.json").values()}
+
+
+def test_out_of_time_stops_new_notices_but_keeps_progress(tmp_path, monkeypatch):
+    store = Store(tmp_path)
+    srcs = [Source(id=f"s{i}", name=f"S{i}", url=f"https://s{i}.gov.in/", category="ssc") for i in range(3)]
+    llm = FakeLlm(extract=[make_extract()])
+    clock = iter(range(0, 10_000, 10))
+    monkeypatch.setattr(main_mod.time, "monotonic", lambda: next(clock))
+    status = fresh_status()
+    # first check is at t=0, the second at t=10: one notice fits before the deadline
+    main_mod.run_jobs(store, llm, FakeFetcher({s.url: page_html(3) for s in srcs}), srcs, NOW, status, deadline=5)
+    assert llm.count(main_mod.jobs_mod.EXTRACT_SYSTEM) == 1
+    assert status["outOfTime"] is True
+    seen = store.read("state/seen.json")
+    assert sum(1 for v in seen.values() if v["status"] == "published") == 1
+    # the next run picks up what was left
+    status2 = fresh_status()
+    main_mod.run_jobs(store, llm, FakeFetcher({s.url: page_html(3) for s in srcs}), srcs,
+                      NOW + dt.timedelta(minutes=15), status2)
+    assert "outOfTime" not in status2
+    assert llm.count(main_mod.jobs_mod.EXTRACT_SYSTEM) > 1
+
+
+def test_no_deadline_means_no_limit(tmp_path):
+    assert main_mod._out_of_time(None) is False
+    assert main_mod._out_of_time(main_mod.time.monotonic() - 1) is True
+    assert main_mod._out_of_time(main_mod.time.monotonic() + 60) is False
+
+
+def test_quiz_out_of_time_skips_ai_and_retries_banks_next_run(tmp_path):
+    store = Store(tmp_path)
+    pages = {CA_SRC.url: RSS}
+    llm = quiz_llm()
+    status = {}
+    main_mod.run_quiz(store, llm, FakeFetcher(pages), [CA_SRC], NOW, status,
+                      deadline=main_mod.time.monotonic() - 1)
+    assert llm.calls == []
+    idx = store.read("quiz/index.json") or {}
+    assert idx.get("bankDay") is None, "banks are retried on the next run"
+    main_mod.run_quiz(store, llm, FakeFetcher(pages), [CA_SRC], NOW + dt.timedelta(minutes=15), {})
+    assert store.read("quiz/index.json")["bankDay"] == main_mod.quiz_mod.today_ist(NOW)
+
+
+def test_main_passes_run_minutes(tmp_path, monkeypatch):
+    seen = {}
+
+    def fake_jobs(*a, deadline=None, **k):
+        seen["jobs"] = deadline
+
+    def fake_quiz(*a, deadline=None, **k):
+        seen["quiz"] = deadline
+
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "k")
+    monkeypatch.setattr(main_mod, "run_jobs", fake_jobs)
+    monkeypatch.setattr(main_mod, "run_quiz", fake_quiz)
+    monkeypatch.setattr(main_mod, "load_sources", lambda: ([], []))
+    start = main_mod.time.monotonic()
+    assert main_mod.main(["run", "--data", str(tmp_path), "--minutes", "2"]) == 0
+    assert seen["jobs"] == seen["quiz"]
+    assert start + 110 < seen["jobs"] < start + 130
