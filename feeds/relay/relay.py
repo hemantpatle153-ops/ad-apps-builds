@@ -25,8 +25,8 @@ import requests
 MAX_BYTES = 25 * 1024 * 1024
 MAX_REDIRECTS = 5
 TIMEOUT = 40
-UA = ("Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) "
-      "Chrome/126.0 Mobile Safari/537.36 VacancyBellBot/1.0 (+https://github.com/hemantpatle153-ops/ad-apps-builds)")
+# Same as feedbot.fetch.UA: PIB and UPSC answer 403 to UAs naming Chrome or a bot.
+UA = "Mozilla/5.0"
 # Official domains: any *.gov.in / *.nic.in, plus the boards and banks on other domains.
 ALLOWED_SUFFIXES = (".gov.in", ".nic.in", ".ac.in", ".org.in")
 ALLOWED_HOSTS = {"ibps.in", "sbi.co.in", "bank.sbi", "nta.ac.in"}
