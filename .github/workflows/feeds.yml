@@ -53,6 +53,9 @@ jobs:
           # (claude, gemini or deepseek), else Claude > Gemini > DeepSeek.
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           ANTHROPIC_WORKSPACE_ID: ${{ vars.ANTHROPIC_WORKSPACE_ID }}
+          # India relay on Cloud Run (feeds/relay); without it pages are fetched directly
+          FETCH_RELAY_URL: ${{ secrets.FETCH_RELAY_URL }}
+          FETCH_RELAY_TOKEN: ${{ secrets.FETCH_RELAY_TOKEN }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
