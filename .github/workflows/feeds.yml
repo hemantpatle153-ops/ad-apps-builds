@@ -31,9 +31,11 @@ jobs:
           cache: pip
           cache-dependency-path: feeds/requirements.txt
       - name: OCR tools for scanned notices
-        run: sudo apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-hin poppler-utils >/dev/null
+        continue-on-error: true
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-hin poppler-utils >/dev/null
       - run: pip install -r feeds/requirements.txt
       - name: Check out the published files
+        id: data
         run: |
           if git ls-remote --exit-code --heads origin feed-data >/dev/null; then
             git fetch --depth 1 origin feed-data
@@ -63,7 +65,7 @@ jobs:
             *) python -m feedbot run --data ../data ;;
           esac
       - name: Publish
-        if: always()
+        if: ${{ !cancelled() && steps.data.outcome == 'success' }}
         working-directory: data
         run: |
           git config user.name "feeds-bot"
