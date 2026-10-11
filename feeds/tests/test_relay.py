@@ -105,7 +105,7 @@ class Session:
 def test_fetch_returns_page():
     s = Session(Resp(body=b"hello"))
     assert relay.fetch("https://upsc.gov.in/a", s) == (200, "https://upsc.gov.in/a", "text/html", b"hello")
-    assert s.kw[0]["allow_redirects"] is False and "VacancyBellBot" in s.kw[0]["headers"]["User-Agent"]
+    assert s.kw[0]["allow_redirects"] is False and "Bot" not in s.kw[0]["headers"]["User-Agent"]
 
 
 def test_fetch_follows_allowed_redirect():
