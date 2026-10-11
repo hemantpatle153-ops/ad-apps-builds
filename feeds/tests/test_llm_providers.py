@@ -370,3 +370,28 @@ def test_make_llm_reads_process_env(monkeypatch):
 def test_make_llm_passes_the_key():
     c = llm.make_llm({"GEMINI_API_KEY": "secret-g"})
     assert c._key == "secret-g"
+
+
+def test_blank_model_variables_fall_back_to_defaults():
+    """GitHub passes unset repository variables as empty strings."""
+    import os
+    import subprocess
+    import sys
+    names = ("CLAUDE_MODEL", "CLAUDE_VERIFY_MODEL", "GEMINI_MODEL", "GEMINI_VERIFY_MODEL",
+             "DEEPSEEK_MODEL", "DEEPSEEK_VERIFY_MODEL", "DEEPSEEK_BASE_URL")
+    env = {**os.environ, **{n: "" for n in names}}
+    code = ("from feedbot import llm; print(llm.CLAUDE_EXTRACT_MODEL, llm.CLAUDE_VERIFY_MODEL, "
+            "llm.GEMINI_EXTRACT_MODEL, llm.DEEPSEEK_EXTRACT_MODEL, llm.BASE_URL)")
+    out = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True,
+                         cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))), check=True)
+    assert out.stdout.split() == ["claude-haiku-5-5", "claude-opus-5-5", "gemini-flash-latest",
+                                  "deepseek-flash", "https://api.deepseek.com"]
+
+
+def test_env_helper(monkeypatch):
+    monkeypatch.setenv("X_TEST_SETTING", "  ")
+    assert llm._env("X_TEST_SETTING", "d") == "d"
+    monkeypatch.setenv("X_TEST_SETTING", " v ")
+    assert llm._env("X_TEST_SETTING", "d") == "v"
+    monkeypatch.delenv("X_TEST_SETTING")
+    assert llm._env("X_TEST_SETTING", "d") == "d"
