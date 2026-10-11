@@ -1,0 +1,24 @@
+{
+  "_note": "Official pages the job watcher reads. kind=html_links: links on the page are candidates. Add a source by adding an entry; status.json on the feed-data branch shows how many links each source returned on the last run.",
+  "jobs": [
+    {"id": "upsc", "name": "Union Public Service Commission", "category": "upsc", "kind": "html_links", "url": "https://upsc.gov.in/whats-new", "states": ["all"]},
+    {"id": "upsc-active", "name": "Union Public Service Commission", "category": "upsc", "kind": "html_links", "url": "https://upsc.gov.in/examinations/active-exams", "states": ["all"]},
+    {"id": "ssc", "name": "Staff Selection Commission", "category": "ssc", "kind": "html_links", "url": "https://ssc.gov.in/", "states": ["all"]},
+    {"id": "ibps", "name": "Institute of Banking Personnel Selection", "category": "banking", "kind": "html_links", "url": "https://www.ibps.in/", "states": ["all"]},
+    {"id": "sbi", "name": "State Bank of India", "category": "banking", "kind": "html_links", "url": "https://sbi.co.in/web/careers/current-openings", "states": ["all"]},
+    {"id": "rbi", "name": "Reserve Bank of India", "category": "banking", "kind": "html_links", "url": "https://opportunities.rbi.org.in/Scripts/Vacancies.aspx", "states": ["all"]},
+    {"id": "nta", "name": "National Testing Agency", "category": "other", "kind": "html_links", "url": "https://nta.ac.in/", "states": ["all"]},
+    {"id": "rrb-cdg", "name": "Railway Recruitment Board", "category": "railway", "kind": "html_links", "url": "https://www.rrbcdg.gov.in/", "states": ["all"]},
+    {"id": "employment-news", "name": "Employment News", "category": "other", "kind": "html_links", "url": "https://employmentnews.gov.in/NewEmp/Home.aspx", "states": ["all"]},
+    {"id": "army", "name": "Indian Army", "category": "defence", "kind": "html_links", "url": "https://joinindianarmy.nic.in/", "states": ["all"]},
+    {"id": "drdo", "name": "DRDO", "category": "psu", "kind": "html_links", "url": "https://www.drdo.gov.in/drdo/careers", "states": ["all"]},
+    {"id": "uppsc", "name": "Uttar Pradesh Public Service Commission", "category": "state_psc", "kind": "html_links", "url": "https://uppsc.up.nic.in/", "states": ["UP"]},
+    {"id": "bpsc", "name": "Bihar Public Service Commission", "category": "state_psc", "kind": "html_links", "url": "https://bpsc.bihar.gov.in/", "states": ["BR"]},
+    {"id": "rpsc", "name": "Rajasthan Public Service Commission", "category": "state_psc", "kind": "html_links", "url": "https://rpsc.rajasthan.gov.in/", "states": ["RJ"]},
+    {"id": "mppsc", "name": "Madhya Pradesh Public Service Commission", "category": "state_psc", "kind": "html_links", "url": "https://mppsc.mp.gov.in/", "states": ["MP"]}
+  ],
+  "currentAffairs": [
+    {"id": "pib-1", "name": "PIB", "kind": "rss", "url": "https://pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=3"},
+    {"id": "pib-2", "name": "PIB", "kind": "rss", "url": "https://pib.gov.in/RssMain.aspx?ModId=6&Lang=2&Regid=3"}
+  ]
+}

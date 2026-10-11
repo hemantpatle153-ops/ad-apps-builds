@@ -1,0 +1,22 @@
+name: Feeds tests
+
+on:
+  pull_request:
+    paths: [feeds/**, .github/workflows/feeds*.yml]
+  push:
+    branches: [main]
+    paths: [feeds/**, .github/workflows/feeds*.yml]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: feeds
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-dev.txt
+      - run: python -m pytest -q
