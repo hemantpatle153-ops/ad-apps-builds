@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import json
 import random
 import re
 import sys
@@ -56,6 +57,19 @@ def _out_of_time(deadline: float | None) -> bool:
     return deadline is not None and time.monotonic() >= deadline
 
 
+def ssc_links(text: str) -> list[tuple[str, str]]:
+    """(headline, document URL) from SSC's notice-board JSON."""
+    out = []
+    for d in (json.loads(text).get("data") or []):
+        title = " ".join(str(d.get("headline") or "").split())
+        for a in d.get("attachments") or []:
+            if a.get("path"):
+                out.append((title, "https://ssc.gov.in/api/attachment/" + str(a["path"]).replace("\\", "/").lstrip("/")))
+        if d.get("redirectUrl"):
+            out.append((title, str(d["redirectUrl"])))
+    return out
+
+
 def run_jobs(store: Store, llm: Llm, fetcher: Fetcher, sources: list[Source], now: dt.datetime,
              status: dict[str, Any], *, max_new: int = MAX_NEW_PER_RUN, deadline: float | None = None) -> None:
     seen: dict[str, Any] = store.read("state/seen.json") or {}
@@ -64,12 +78,14 @@ def run_jobs(store: Store, llm: Llm, fetcher: Fetcher, sources: list[Source], no
         st: dict[str, Any] = {"ok": False, "links": 0, "candidates": 0, "new": 0, "published": 0, "review": 0}
         status["sources"][src.id] = st
         try:
+            if src.extra.get("warmup"):
+                fetcher.get(src.extra["warmup"])  # sets the cookies the listing needs
             page = fetcher.get(src.url)
             st["http"] = page.status
             if page.status >= 400:
                 st["error"] = f"HTTP {page.status}"
                 continue
-            links = html_links(page.text(), page.url)
+            links = ssc_links(page.text()) if src.kind == "ssc_api" else html_links(page.text(), page.url)
             st["links"] = len(links)
             cands = [(t, u) for t, u in links if is_candidate(t, u, src)]
             st["candidates"] = len(cands)

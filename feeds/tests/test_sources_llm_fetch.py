@@ -95,7 +95,7 @@ def test_sources_file_is_valid():
     ids = [s.id for s in jobs_src + ca_src]
     assert len(ids) == len(set(ids)) and len(jobs_src) >= 10 and ca_src
     for s in jobs_src + ca_src:
-        assert urlparse(s.url).scheme == "https" and s.name and s.kind in ("html_links", "rss")
+        assert urlparse(s.url).scheme == "https" and s.name and s.kind in ("html_links", "ssc_api", "rss")
     for s in jobs_src:
         assert s.category in CATEGORIES and s.states
 

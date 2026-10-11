@@ -290,7 +290,15 @@ def test_fetcher_falls_back_to_direct_for_hosts_the_relay_refuses():
     assert p.body == b"direct" and s.gets == ["https://www.example.com/x"]
 
 
-@pytest.mark.parametrize("status", [401, 502, 500])
+def test_fetcher_goes_direct_when_the_relay_cannot_reach_the_site(monkeypatch):
+    monkeypatch.setattr(fetch.time, "sleep", lambda s: None)
+    s = RelaySession(RelayResp(502, b"SSLError"), RelayResp(502, b"SSLError"))
+    f = fetch.Fetcher(session=s, delay=0, retries=1, relay_url="https://relay.run.app", relay_token="tok")
+    assert f.get("https://bpsc.bihar.gov.in/").body == b"direct"
+    assert len(s.posts) == 2 and s.gets == ["https://bpsc.bihar.gov.in/"]
+
+
+@pytest.mark.parametrize("status", [401, 500])
 def test_fetcher_relay_errors_raise(status, monkeypatch):
     monkeypatch.setattr(fetch.time, "sleep", lambda s: None)
     s = RelaySession(RelayResp(status, b"nope"), RelayResp(status, b"nope"))

@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+import functools
 import io
 import os
+import re
 import shutil
 import subprocess
 import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 from urllib.parse import urljoin, urlparse
 
 import requests
@@ -19,6 +22,20 @@ from bs4 import BeautifulSoup
 # and UPSC; the bare token is accepted everywhere we read.
 UA = "Mozilla/5.0"
 MAX_BYTES = 25 * 1024 * 1024
+# Some servers fail about one TLS handshake in three (IBPS); give those more tries.
+SSL_ATTEMPTS = 5
+INTERMEDIATES = Path(__file__).with_name("intermediates.pem")
+
+
+@functools.cache
+def ca_bundle() -> str:
+    """certifi's roots plus intermediates some official sites forget to send
+    (IBPS, BPSC); verification stays on, no root is added."""
+    import certifi
+    out = Path(tempfile.gettempdir(), "feedbot-ca-bundle.pem")
+    out.write_text(Path(certifi.where()).read_text(encoding="utf-8") + "\n"
+                   + INTERMEDIATES.read_text(encoding="utf-8"), encoding="utf-8")
+    return str(out)
 
 
 @dataclass
@@ -45,6 +62,10 @@ class Page:
         return self.body.decode("utf-8", "replace")
 
 
+class RelaySiteError(requests.RequestException):
+    """The relay answered, but could not fetch the site itself (HTTP 502)."""
+
+
 class Fetcher:
     """Fetches pages directly, or through the India relay (feeds/relay) when
     FETCH_RELAY_URL and FETCH_RELAY_TOKEN are set, because many Indian
@@ -53,7 +74,10 @@ class Fetcher:
     def __init__(self, *, timeout: float = 40, retries: int = 2, delay: float = 1.0,
                  session: requests.Session | None = None, relay_url: str | None = None,
                  relay_token: str | None = None) -> None:
-        self._http = session or requests.Session()
+        if session is None:
+            session = requests.Session()
+            session.verify = ca_bundle()
+        self._http = session
         self._http.headers.update({"User-Agent": UA, "Accept-Language": "en-IN,en;q=0.9,hi;q=0.8"})
         self._timeout = timeout
         self._retries = retries
@@ -67,18 +91,28 @@ class Fetcher:
         return bool(self._relay and self._relay_token)
 
     def get(self, url: str) -> Page:
-        last: Exception | None = None
-        for attempt in range(self._retries + 1):
+        attempt = 0
+        while True:
             try:
-                page = self._via_relay(url) if self.relayed else None
+                page = None
+                if self.relayed:
+                    try:
+                        page = self._via_relay(url)
+                    except RelaySiteError:
+                        if attempt + 1 < self._retries + 1:
+                            raise
+                        # last try: the relay could not reach the site (TLS faults the
+                        # relay's own certificates don't cover), so go direct once
                 if page is None:
                     page = self._direct(url)
                 time.sleep(self._delay)
                 return page
             except requests.RequestException as e:
-                last = e
-                time.sleep(2 * (attempt + 1))
-        raise requests.RequestException(f"{url}: {last}")
+                attempt += 1
+                limit = SSL_ATTEMPTS if isinstance(e, requests.exceptions.SSLError) else self._retries + 1
+                if attempt >= limit:
+                    raise requests.RequestException(f"{url}: {e}") from None
+                time.sleep(2 * attempt)
 
     def _read(self, r: requests.Response) -> bytes:
         chunks, size = [], 0
@@ -99,6 +133,8 @@ class Fetcher:
                             headers={"Authorization": f"Bearer {self._relay_token}"})
         if r.status_code == 403:
             return None  # not an official domain the relay serves: fetch it directly
+        if r.status_code == 502:
+            raise RelaySiteError(f"relay HTTP 502: {r.text[:200]}")
         if r.status_code != 200:
             raise requests.RequestException(f"relay HTTP {r.status_code}: {r.text[:200]}")
         try:
@@ -126,8 +162,37 @@ def html_text(html: str) -> str:
     return "\n".join(ln for ln in lines if ln)
 
 
+# Link labels that say nothing about the notice ("English", "View More", "Download").
+_GENERIC = re.compile(r"^(english|hindi|हिंदी|हिन्दी|download|click here|here|view|view more|read more|"
+                      r"know more|pdf|link|details)\b", re.I)
+_DOC_VALUE = re.compile(r"\.(pdf|docx?)(\?|/|$)", re.I)
+
+
+def _context(a: Any) -> str:
+    """Text of the nearest earlier block (beside the link or one of its parents) that holds no links:
+    the accordion header above SBI's "English | Hindi" document links."""
+    for p in [a, *a.parents][:7]:
+        prev = p.find_previous_sibling()
+        while prev is not None and (prev.name in ("style", "script", "noscript") or not prev.get_text(strip=True)):
+            prev = prev.find_previous_sibling()
+        if prev is not None and prev.name != "a" and not prev.find("a"):
+            t = " ".join(prev.get_text(" ").split())
+            if len(t) >= 15:
+                return t[:300]
+    return ""
+
+
+def _same_site_https(url: str, base_url: str) -> str:
+    """http links back to an https page's own host (DRDO's http links answer 502)."""
+    u, b = urlparse(url), urlparse(base_url)
+    if u.scheme == "http" and b.scheme == "https" and u.netloc.lower() == b.netloc.lower():
+        return u._replace(scheme="https").geturl()
+    return url
+
+
 def html_links(html: str, base_url: str) -> list[tuple[str, str]]:
-    """(link text, absolute URL) for every link on the page, in page order."""
+    """(link text, absolute URL) for every link on the page, in page order, plus
+    documents offered as <option value="x.pdf"> in a select (RRB)."""
     soup = BeautifulSoup(html, "html.parser")
     out: list[tuple[str, str]] = []
     seen: set[str] = set()
@@ -135,14 +200,33 @@ def html_links(html: str, base_url: str) -> list[tuple[str, str]]:
         href = a["href"].strip()
         if not href or href.startswith(("#", "javascript:", "mailto:", "tel:")):
             continue
-        url = urljoin(base_url, href)
+        url = _same_site_https(urljoin(base_url, href), base_url)
         if urlparse(url).scheme not in ("http", "https") or url in seen:
             continue
         seen.add(url)
         text = " ".join(a.get_text(" ").split())
-        if not text:
-            text = a.get("title") or a.get("aria-label") or ""
+        label = " ".join((a.get("aria-label") or a.get("title") or "").split())
+        if label and len(label) > len(text) + 5:
+            # <a aria-label="View More DMRL invites applications ...">View More</a>
+            text = label[len(text):].strip() if text and label.startswith(text) else label
+        if _GENERIC.search(text) and len(text.split()) <= 5:
+            c = _context(a)
+            if c:
+                text = f"{c} - {text}"
         out.append((text.strip(), url))
+    for opt in soup.find_all("option", value=True):
+        v = opt["value"].strip()
+        if not _DOC_VALUE.search(v):
+            continue
+        url = _same_site_https(urljoin(base_url, v), base_url)
+        if url in seen:
+            continue
+        seen.add(url)
+        row = opt.find_parent("tr")
+        cells = [" ".join(td.get_text(" ").split()) for td in row.find_all("td")] if row else []
+        cells = [c for c in cells[1:] if c and not c.lower().startswith("select language")]
+        lang = " ".join(opt.get_text(" ").split())
+        out.append((" - ".join(cells + [lang]).strip(" -"), url))
     return out
 
 

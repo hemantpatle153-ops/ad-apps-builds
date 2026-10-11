@@ -17,9 +17,14 @@ import ipaddress
 import json
 import os
 import socket
+import tempfile
+import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
+import certifi
 import requests
 
 MAX_BYTES = 25 * 1024 * 1024
@@ -30,7 +35,34 @@ TIMEOUT = 40
 UA = "Mozilla/5.0"
 # Official domains: any *.gov.in / *.nic.in, plus the boards and banks on other domains.
 ALLOWED_SUFFIXES = (".gov.in", ".nic.in", ".ac.in", ".org.in")
-ALLOWED_HOSTS = {"ibps.in", "sbi.co.in", "bank.sbi", "nta.ac.in"}
+ALLOWED_HOSTS = {"ibps.in", "sbi.co.in", "sbi.bank.in", "bank.sbi", "nta.ac.in"}
+# Some servers fail about one TLS handshake in three (IBPS); give those more tries.
+SSL_ATTEMPTS = 5
+INTERMEDIATES = Path(__file__).with_name("intermediates.pem")
+
+
+def _ca_bundle() -> str:
+    """certifi's roots plus intermediates some official sites forget to send
+    (IBPS, BPSC); verification stays on, no root is added."""
+    out = Path(tempfile.gettempdir(), "relay-ca-bundle.pem")
+    out.write_text(Path(certifi.where()).read_text(encoding="utf-8") + "\n"
+                   + INTERMEDIATES.read_text(encoding="utf-8"), encoding="utf-8")
+    return str(out)
+
+
+# One session for the life of the process, so cookies set by a warm-up page
+# (RRB's firewall) are sent with the next request for that site.
+_session_lock = threading.Lock()
+_session: requests.Session | None = None
+
+
+def shared_session() -> requests.Session:
+    global _session
+    with _session_lock:
+        if _session is None:
+            _session = requests.Session()
+            _session.verify = _ca_bundle()
+        return _session
 
 
 _resolve = socket.getaddrinfo
@@ -75,13 +107,24 @@ def check_url(url: str) -> None:
         raise Refused("address is not public")
 
 
+def _get(http: requests.Session, url: str, headers: dict[str, str]) -> requests.Response:
+    for attempt in range(1, SSL_ATTEMPTS + 1):
+        try:
+            return http.get(url, headers=headers, timeout=TIMEOUT, stream=True, allow_redirects=False)
+        except requests.exceptions.SSLError:
+            if attempt == SSL_ATTEMPTS:
+                raise
+            time.sleep(attempt)
+    raise AssertionError("unreachable")
+
+
 def fetch(url: str, session: requests.Session | None = None) -> tuple[int, str, str, bytes]:
     """(status, final url, content type, body), following redirects only to allowed hosts."""
-    http = session or requests.Session()
+    http = session or shared_session()
     headers = {"User-Agent": UA, "Accept-Language": "en-IN,en;q=0.9,hi;q=0.8"}
     for _ in range(MAX_REDIRECTS + 1):
         check_url(url)
-        r = http.get(url, headers=headers, timeout=TIMEOUT, stream=True, allow_redirects=False)
+        r = _get(http, url, headers)
         if r.is_redirect and r.headers.get("location"):
             url = urljoin(url, r.headers["location"])
             r.close()
