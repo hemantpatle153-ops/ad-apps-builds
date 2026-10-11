@@ -19,7 +19,10 @@ choose, add a repository *variable* (same page, Variables tab) `LLM_PROVIDER`
 set to `claude`, `gemini` or `deepseek`. The models can be changed with the
 variables `CLAUDE_MODEL`, `CLAUDE_VERIFY_MODEL`, `GEMINI_MODEL` and
 `GEMINI_VERIFY_MODEL` (DeepSeek: `DEEPSEEK_MODEL`, `DEEPSEEK_VERIFY_MODEL`).
-Switching needs no code change and no app update: the apps only read the
+If the Claude run says the key "is not scoped to a workspace", either make a
+new key inside a workspace in the Claude Console, or add the variable
+`ANTHROPIC_WORKSPACE_ID` (the workspace's ID, from Console → Settings →
+Workspaces). Switching needs no code change and no app update: the apps only read the
 published files. Without any key the run only writes `status.json` saying so.
 
 ## How a job notice gets published

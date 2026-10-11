@@ -202,6 +202,19 @@ def test_claude_builds_real_sdk_client_from_key():
     c = llm.Claude("sk-ant-test", retries=5, timeout=60)
     assert isinstance(c._client, anthropic.Anthropic)
     assert c._client.max_retries == 5
+    assert "anthropic-workspace-id" not in c._client.default_headers
+
+
+def test_claude_sends_workspace_id_when_set(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_WORKSPACE_ID", " wrkspc_123 ")
+    c = llm.Claude("sk-ant-test")
+    assert c._client.default_headers["anthropic-workspace-id"] == "wrkspc_123"
+
+
+def test_claude_blank_workspace_id_sends_no_header(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_WORKSPACE_ID", "  ")
+    c = llm.Claude("sk-ant-test")
+    assert "anthropic-workspace-id" not in c._client.default_headers
 
 
 def test_claude_models_follow_env(monkeypatch):

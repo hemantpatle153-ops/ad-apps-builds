@@ -51,6 +51,7 @@ jobs:
           # Any one AI key is enough; with several, LLM_PROVIDER picks one
           # (claude, gemini or deepseek), else Claude > Gemini > DeepSeek.
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_WORKSPACE_ID: ${{ vars.ANTHROPIC_WORKSPACE_ID }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}

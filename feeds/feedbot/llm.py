@@ -186,7 +186,11 @@ class Claude(_Client):
         self.verify_model = CLAUDE_VERIFY_MODEL
         if client is None:
             import anthropic  # only needed when Claude is the provider
-            client = anthropic.Anthropic(api_key=key, timeout=timeout, max_retries=retries)
+            # keys not made inside a workspace must name one
+            workspace = os.environ.get("ANTHROPIC_WORKSPACE_ID", "").strip()
+            headers = {"anthropic-workspace-id": workspace} if workspace else None
+            client = anthropic.Anthropic(api_key=key, timeout=timeout, max_retries=retries,
+                                         default_headers=headers)
         self._client = client
 
     def json(self, system: str, user: str, *, model: str | None = None,

@@ -136,5 +136,6 @@ def extraction() -> dict[str, Any]:
 @pytest.fixture(autouse=True)
 def no_ai_keys(monkeypatch):
     """Tests never see the keys or provider choice of the machine running them."""
-    for var in ("ANTHROPIC_API_KEY", "GEMINI_API_KEY", "DEEPSEEK_API_KEY", "LLM_PROVIDER"):
+    for var in ("ANTHROPIC_API_KEY", "GEMINI_API_KEY", "DEEPSEEK_API_KEY", "LLM_PROVIDER",
+                "ANTHROPIC_WORKSPACE_ID"):
         monkeypatch.delenv(var, raising=False)
