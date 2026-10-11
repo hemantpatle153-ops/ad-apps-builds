@@ -17,7 +17,7 @@ from typing import Any
 from . import jobs as jobs_mod
 from . import quiz as quiz_mod
 from .fetch import Fetcher, document_text, html_links
-from .llm import Llm, LlmError, make_llm
+from .llm import Llm, LlmError, LlmReplyError, make_llm
 from .sources import Source, is_candidate, link_id, load_sources
 from .store import Store
 from .validate import post_errors, question_errors
@@ -116,6 +116,10 @@ def run_jobs(store: Store, llm: Llm, fetcher: Fetcher, sources: list[Source], no
                 budget -= 1
                 out = jobs_mod.process_notice(llm, src, notice_url=doc.url, link_text=text, text=body,
                                               links={u for _, u in doc_links}, now=now)
+            except LlmReplyError as e:  # one unusable reply: skip this notice only
+                entry.update(status="error", error=str(e)[:200])
+                seen[key] = entry
+                continue
             except LlmError:
                 raise
             except Exception as e:
@@ -208,8 +212,12 @@ def run_quiz(store: Store, llm: Llm, fetcher: Fetcher, ca_sources: list[Source],
                     report.reject(f"release {k} too short")
                     continue
                 read += 1
-                note, kept = quiz_mod.current_affairs_item(llm, title=v["title"], url=v["url"], text=body,
-                                                           date=ca_day, index=i + 1, report=report)
+                try:
+                    note, kept = quiz_mod.current_affairs_item(llm, title=v["title"], url=v["url"], text=body,
+                                                               date=ca_day, index=i + 1, report=report)
+                except LlmReplyError as e:  # one unusable reply: skip this release only
+                    report.reject(f"release {k}: {str(e)[:80]}")
+                    continue
                 if note:
                     notes.append(note)
                 questions += [q for q in kept if not question_errors(q)]
