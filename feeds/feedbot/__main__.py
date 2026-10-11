@@ -289,7 +289,8 @@ def main(argv: list[str] | None = None) -> int:
         traceback.print_exc()
         code = 1
     status["llm"] = {"provider": llm.name, "calls": llm.usage.calls, "promptTokens": llm.usage.prompt_tokens,
-                     "completionTokens": llm.usage.completion_tokens, "byModel": llm.usage.by_model}
+                     "completionTokens": llm.usage.completion_tokens, "byModel": llm.usage.by_model,
+                     "tokensByModel": llm.usage.tokens_by_model}
     store.write("status.json", status)
     return code
 

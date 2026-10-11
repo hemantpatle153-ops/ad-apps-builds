@@ -10,7 +10,7 @@ Actions → New repository secret. Any one is enough:
 
 | Secret | AI | Extracts with | Checks with |
 |---|---|---|---|
-| `ANTHROPIC_API_KEY` | Claude | `claude-haiku-5-5` | `claude-opus-5-5` |
+| `ANTHROPIC_API_KEY` | Claude | `claude-haiku-5-5` | `claude-haiku-5-5` (set `CLAUDE_VERIFY_MODEL` to `claude-opus-5-5` for a stronger, ~30x pricier check) |
 | `GEMINI_API_KEY` | Gemini | `gemini-flash-latest` | `gemini-flash-latest` |
 | `DEEPSEEK_API_KEY` | DeepSeek | `deepseek-flash` | `deepseek-v4-pro` |
 
