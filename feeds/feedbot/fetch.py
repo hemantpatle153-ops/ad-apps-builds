@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import os
 import shutil
 import subprocess
 import tempfile
@@ -44,31 +45,67 @@ class Page:
 
 
 class Fetcher:
+    """Fetches pages directly, or through the India relay (feeds/relay) when
+    FETCH_RELAY_URL and FETCH_RELAY_TOKEN are set, because many Indian
+    government sites refuse servers outside India."""
+
     def __init__(self, *, timeout: float = 40, retries: int = 2, delay: float = 1.0,
-                 session: requests.Session | None = None) -> None:
+                 session: requests.Session | None = None, relay_url: str | None = None,
+                 relay_token: str | None = None) -> None:
         self._http = session or requests.Session()
         self._http.headers.update({"User-Agent": UA, "Accept-Language": "en-IN,en;q=0.9,hi;q=0.8"})
         self._timeout = timeout
         self._retries = retries
         self._delay = delay
+        self._relay = (relay_url if relay_url is not None else os.environ.get("FETCH_RELAY_URL", "")).strip()
+        self._relay_token = (relay_token if relay_token is not None
+                             else os.environ.get("FETCH_RELAY_TOKEN", "")).strip()
+
+    @property
+    def relayed(self) -> bool:
+        return bool(self._relay and self._relay_token)
 
     def get(self, url: str) -> Page:
         last: Exception | None = None
         for attempt in range(self._retries + 1):
             try:
-                r = self._http.get(url, timeout=self._timeout, stream=True, allow_redirects=True)
-                chunks, size = [], 0
-                for chunk in r.iter_content(64 * 1024):
-                    size += len(chunk)
-                    if size > MAX_BYTES:
-                        raise requests.RequestException("file too large")
-                    chunks.append(chunk)
+                page = self._via_relay(url) if self.relayed else None
+                if page is None:
+                    page = self._direct(url)
                 time.sleep(self._delay)
-                return Page(r.url, r.status_code, r.headers.get("content-type", "").lower(), b"".join(chunks))
+                return page
             except requests.RequestException as e:
                 last = e
                 time.sleep(2 * (attempt + 1))
         raise requests.RequestException(f"{url}: {last}")
+
+    def _read(self, r: requests.Response) -> bytes:
+        chunks, size = [], 0
+        for chunk in r.iter_content(64 * 1024):
+            size += len(chunk)
+            if size > MAX_BYTES:
+                raise requests.RequestException("file too large")
+            chunks.append(chunk)
+        return b"".join(chunks)
+
+    def _direct(self, url: str) -> Page:
+        r = self._http.get(url, timeout=self._timeout, stream=True, allow_redirects=True)
+        return Page(r.url, r.status_code, r.headers.get("content-type", "").lower(), self._read(r))
+
+    def _via_relay(self, url: str) -> Page | None:
+        """The page through the relay; None when the relay won't fetch this host."""
+        r = self._http.post(self._relay, json={"url": url}, timeout=self._timeout + 30, stream=True,
+                            headers={"Authorization": f"Bearer {self._relay_token}"})
+        if r.status_code == 403:
+            return None  # not an official domain the relay serves: fetch it directly
+        if r.status_code != 200:
+            raise requests.RequestException(f"relay HTTP {r.status_code}: {r.text[:200]}")
+        try:
+            status = int(r.headers.get("x-relay-status", "200"))
+        except ValueError:
+            status = 200
+        return Page(r.headers.get("x-relay-url") or url, status,
+                    r.headers.get("content-type", "").lower(), self._read(r))
 
 
 def html_text(html: str) -> str:

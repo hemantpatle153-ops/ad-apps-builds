@@ -25,6 +25,18 @@ new key inside a workspace in the Claude Console, or add the variable
 Workspaces). Switching needs no code change and no app update: the apps only read the
 published files. Without any key the run only writes `status.json` saying so.
 
+## Fetching from India
+
+Many Indian government sites refuse servers outside India, including GitHub's.
+`relay/` is a small service for Cloud Run in Mumbai that fetches official
+pages (`*.gov.in`, `*.nic.in`, `*.ac.in`, `*.org.in`, IBPS, SBI) for the
+pipeline. To set it up, open [Cloud Shell](https://shell.cloud.google.com/?cloudshell_git_repo=https://github.com/hemantpatle153-ops/ad-apps-builds&show=terminal)
+and run `bash feeds/relay/deploy.sh`. It prints two values; add them as
+repository secrets `FETCH_RELAY_URL` and `FETCH_RELAY_TOKEN`. Without them the
+pipeline fetches directly. Running it again updates the service and keeps the
+same token. More hosts can be allowed with the Cloud Run variable
+`RELAY_EXTRA_HOSTS` (comma separated).
+
 ## How a job notice gets published
 
 1. Each page in `sources.json` is read; links that look like notices
