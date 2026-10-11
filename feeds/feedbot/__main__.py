@@ -7,6 +7,7 @@ import datetime as dt
 import random
 import re
 import sys
+import time
 import traceback
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -25,6 +26,7 @@ MAX_NEW_PER_SOURCE = 5
 MAX_NEW_PER_RUN = 25
 CA_PER_DAY = 8
 BANK_PER_SUBJECT_PER_DAY = 10
+RUN_MINUTES = 20           # stop starting new AI work after this, so the run can publish
 SUBJECT_TITLES = {
     "gk": {"en": "General Knowledge", "hi": "सामान्य ज्ञान"},
     "history": {"en": "History", "hi": "इतिहास"},
@@ -50,8 +52,12 @@ def _duplicate(store: Store, post: dict[str, Any]) -> bool:
     return False
 
 
+def _out_of_time(deadline: float | None) -> bool:
+    return deadline is not None and time.monotonic() >= deadline
+
+
 def run_jobs(store: Store, llm: Llm, fetcher: Fetcher, sources: list[Source], now: dt.datetime,
-             status: dict[str, Any], *, max_new: int = MAX_NEW_PER_RUN) -> None:
+             status: dict[str, Any], *, max_new: int = MAX_NEW_PER_RUN, deadline: float | None = None) -> None:
     seen: dict[str, Any] = store.read("state/seen.json") or {}
     budget = max_new
     for src in sources:
@@ -80,6 +86,9 @@ def run_jobs(store: Store, llm: Llm, fetcher: Fetcher, sources: list[Source], no
         st["new"] = len(fresh)
         for text, url in fresh[:MAX_NEW_PER_SOURCE]:
             if budget <= 0:
+                break
+            if _out_of_time(deadline):
+                status["outOfTime"] = True  # the rest wait for the next run
                 break
             key = link_id(url)
             entry = {"source": src.id, "url": url, "title": text[:200], "first": _ts(now)}
@@ -135,7 +144,7 @@ def _prid(url: str) -> str | None:
 
 
 def run_quiz(store: Store, llm: Llm, fetcher: Fetcher, ca_sources: list[Source], now: dt.datetime,
-             status: dict[str, Any]) -> None:
+             status: dict[str, Any], *, deadline: float | None = None) -> None:
     today = quiz_mod.today_ist(now)
     qs: dict[str, Any] = {"today": today}
     status["quiz"] = qs
@@ -158,7 +167,7 @@ def run_quiz(store: Store, llm: Llm, fetcher: Fetcher, ca_sources: list[Source],
     idx = store.quiz_index()
     # 2. yesterday's current affairs, written once
     yday = (dt.date.fromisoformat(today) - dt.timedelta(days=1)).isoformat()
-    if not store.exists(f"quiz/current_affairs/{yday}.json"):
+    if not store.exists(f"quiz/current_affairs/{yday}.json") and not _out_of_time(deadline):
         day_items = [(k, v) for k, v in pib.items() if v.get("day") == yday]
         if day_items:
             report = quiz_mod.Report()
@@ -188,10 +197,13 @@ def run_quiz(store: Store, llm: Llm, fetcher: Fetcher, ca_sources: list[Source],
                         "reasons": report.reasons[:30]}
     store.save_quiz_index(idx, now=_ts(now))
     # 3. grow the subject banks a little every day
-    if idx.get("bankDay") != today:
+    if idx.get("bankDay") != today and not _out_of_time(deadline):
         rng = random.Random(today)
         report = quiz_mod.Report()
         for subject in quiz_mod.BANK_SUBJECTS:
+            if _out_of_time(deadline):
+                status["outOfTime"] = True
+                break
             bank = store.bank(subject)
             existing = {quiz_mod.compact(q["q"]["en"]) for q in bank}
             try:
@@ -204,7 +216,8 @@ def run_quiz(store: Store, llm: Llm, fetcher: Fetcher, ca_sources: list[Source],
             if new:
                 store.save_bank(subject, bank + new, SUBJECT_TITLES[subject])
         idx = store.quiz_index()
-        idx["bankDay"] = today
+        if not _out_of_time(deadline):  # otherwise the rest of the subjects go next run
+            idx["bankDay"] = today
         qs["banks"] = {"kept": report.kept, "rejected": report.rejected, "reasons": report.reasons[:30]}
     # 4. today's daily quiz
     if not store.exists(f"quiz/daily/{today}.json"):
@@ -237,6 +250,7 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--jobs", action="store_true")
     r.add_argument("--quiz", action="store_true")
     r.add_argument("--max-new", type=int, default=MAX_NEW_PER_RUN)
+    r.add_argument("--minutes", type=float, default=RUN_MINUTES)
     args = ap.parse_args(argv)
     now = dt.datetime.now(dt.timezone.utc)
     store = Store(args.data)
@@ -253,11 +267,12 @@ def main(argv: list[str] | None = None) -> int:
     do_jobs = args.jobs or not args.quiz
     do_quiz = args.quiz or not args.jobs
     code = 0
+    deadline = time.monotonic() + args.minutes * 60
     try:
         if do_jobs:
-            run_jobs(store, llm, fetcher, jobs_src, now, status, max_new=args.max_new)
+            run_jobs(store, llm, fetcher, jobs_src, now, status, max_new=args.max_new, deadline=deadline)
         if do_quiz:
-            run_quiz(store, llm, fetcher, ca_src, now, status)
+            run_quiz(store, llm, fetcher, ca_src, now, status, deadline=deadline)
     except Exception as e:
         status["error"] = f"{type(e).__name__}: {str(e)[:300]}"
         traceback.print_exc()
