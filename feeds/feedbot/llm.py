@@ -48,6 +48,20 @@ class LlmError(RuntimeError):
     pass
 
 
+class LlmReplyError(LlmError):
+    """One reply could not be used (bad JSON, declined, cut off): skip that item,
+    keep the run going. Other LlmErrors (keys, budget, HTTP) still stop the run."""
+
+
+_ESCAPE = re.compile(r'\\(["\\/bfnrtu]?)')
+
+
+def _fix_escapes(text: str) -> str:
+    """Double every backslash that does not start a valid JSON escape, such as a
+    stray backslash before an underscore copied from the source text."""
+    return _ESCAPE.sub(lambda m: m.group(0) if m.group(1) else "\\\\", text)
+
+
 class Llm(Protocol):
     extract_model: str
     verify_model: str
@@ -67,13 +81,16 @@ def parse_json_reply(text: str) -> dict[str, Any]:
     except json.JSONDecodeError:
         start, end = t.find("{"), t.rfind("}")
         if start < 0 or end <= start:
-            raise LlmError("reply has no JSON object") from None
+            raise LlmReplyError("reply has no JSON object") from None
         try:
             value = json.loads(t[start:end + 1])
         except json.JSONDecodeError as e:
-            raise LlmError(f"reply JSON is invalid: {e}") from None
+            try:  # models sometimes copy a stray backslash from the source text
+                value = json.loads(_fix_escapes(t[start:end + 1]))
+            except json.JSONDecodeError:
+                raise LlmReplyError(f"reply JSON is invalid: {e}") from None
     if not isinstance(value, dict):
-        raise LlmError("reply JSON is not an object")
+        raise LlmReplyError("reply JSON is not an object")
     return value
 
 
@@ -232,9 +249,9 @@ class Claude(_Client):
         u = reply.usage
         self.usage.add(model, getattr(u, "input_tokens", 0), getattr(u, "output_tokens", 0))
         if reply.stop_reason == "refusal":
-            raise LlmError("Claude declined this request")
+            raise LlmReplyError("Claude declined this request")
         if reply.stop_reason == "max_tokens":
-            raise LlmError("Claude reply was cut off (max_tokens)")
+            raise LlmReplyError("Claude reply was cut off (max_tokens)")
         text = "".join(b.text for b in reply.content if b.type == "text")
         return parse_json_reply(text)
 
