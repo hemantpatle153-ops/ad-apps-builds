@@ -240,7 +240,7 @@ def test_quiz_day_one_and_two(tmp_path):
 
 def test_quiz_rerun_same_day_is_cheap(tmp_path):
     store = Store(tmp_path)
-    pages = {CA_SRC.url: RSS}
+    pages = {CA_SRC.url: RSS, "https://pib.gov.in/PressReleaseIframePage.aspx?PRID=2001": release_page()}
     llm = quiz_llm()
     main_mod.run_quiz(store, llm, FakeFetcher(pages), [CA_SRC], NOW, {})
     n = len(llm.calls)
@@ -400,17 +400,41 @@ def test_main_passes_run_minutes(tmp_path, monkeypatch):
     assert start + 110 < seen["jobs"] < start + 130
 
 
-def test_current_affairs_tried_once_per_day(tmp_path):
+def test_unreadable_releases_retry_next_run(tmp_path):
     store = Store(tmp_path)
     pages = {CA_SRC.url: RSS}  # the release page itself can't be fetched
     llm = quiz_llm()
     status = {}
     main_mod.run_quiz(store, llm, FakeFetcher(pages), [CA_SRC], NOW, status)
     assert status["quiz"]["ca"]["notes"] == 0
+    assert llm.count(quiz.CA_PICK_SYSTEM) == 1
+    pages["https://pib.gov.in/PressReleaseIframePage.aspx?PRID=2001"] = release_page()
+    main_mod.run_quiz(store, llm, FakeFetcher(pages), [CA_SRC], NOW + dt.timedelta(minutes=15), status := {})
+    assert status["quiz"]["ca"]["notes"] == 1
+
+
+def test_current_affairs_tried_once_per_day_when_read(tmp_path):
+    store = Store(tmp_path)
+    pages = {CA_SRC.url: RSS, "https://pib.gov.in/PressReleaseIframePage.aspx?PRID=2001": release_page()}
+    llm = quiz_llm()
+    llm.ca = [{"note": None, "questions": []}]  # the model gives nothing usable
+    main_mod.run_quiz(store, llm, FakeFetcher(pages), [CA_SRC], NOW, {})
     picks = llm.count(quiz.CA_PICK_SYSTEM)
-    assert picks == 1
+    assert picks == 1 and store.read("quiz/index.json")["caAttempt"] == quiz.today_ist(NOW)
     main_mod.run_quiz(store, llm, FakeFetcher(pages), [CA_SRC], NOW + dt.timedelta(minutes=15), {})
     assert llm.count(quiz.CA_PICK_SYSTEM) == picks
+
+
+def test_old_tried_marker_is_ignored(tmp_path):
+    store = Store(tmp_path)
+    idx = store.quiz_index()
+    idx["caTried"] = quiz.today_ist(NOW)
+    store.save_quiz_index(idx, now="x")
+    pages = {CA_SRC.url: RSS, "https://pib.gov.in/PressReleaseIframePage.aspx?PRID=2001": release_page()}
+    status = {}
+    main_mod.run_quiz(store, quiz_llm(), FakeFetcher(pages), [CA_SRC], NOW, status)
+    assert status["quiz"]["ca"]["notes"] == 1
+    assert "caTried" not in store.read("quiz/index.json")
 
 
 def test_current_affairs_prefers_yesterday_when_collected(tmp_path):

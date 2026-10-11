@@ -173,16 +173,15 @@ def run_quiz(store: Store, llm: Llm, fetcher: Fetcher, ca_sources: list[Source],
     ca_day = yday
     if not idx.get("currentAffairs") and not any(v.get("day") == yday for v in pib.values()):
         ca_day = today
-    if (not store.exists(f"quiz/current_affairs/{ca_day}.json") and idx.get("caTried") != ca_day
+    if (not store.exists(f"quiz/current_affairs/{ca_day}.json") and idx.get("caAttempt") != ca_day
             and not _out_of_time(deadline)):
         day_items = [(k, v) for k, v in pib.items() if v.get("day") == ca_day]
         if day_items:
-            idx["caTried"] = ca_day  # one attempt per day, so failures don't cost every run
             report = quiz_mod.Report()
             listing = "\n".join(f"{k}: {v['title']}" for k, v in day_items[:120])
             pick = llm.json(quiz_mod.CA_PICK_SYSTEM, f"Pick up to {CA_PER_DAY} ids:\n{listing}").get("pick") or []
             chosen = [(k, v) for k, v in day_items if k in {str(p) for p in pick}][:CA_PER_DAY]
-            notes, questions = [], []
+            notes, questions, read = [], [], 0
             for i, (k, v) in enumerate(chosen):
                 try:
                     body, _ = document_text(fetcher.get(v["url"]))
@@ -192,11 +191,15 @@ def run_quiz(store: Store, llm: Llm, fetcher: Fetcher, ca_sources: list[Source],
                 if len(body) < 200:
                     report.reject(f"release {k} too short")
                     continue
+                read += 1
                 note, kept = quiz_mod.current_affairs_item(llm, title=v["title"], url=v["url"], text=body,
                                                            date=ca_day, index=i + 1, report=report)
                 if note:
                     notes.append(note)
                 questions += [q for q in kept if not question_errors(q)]
+            idx.pop("caTried", None)  # older marker, set even when nothing could be read
+            if read:
+                idx["caAttempt"] = ca_day  # one real attempt a day; unreadable releases retry next run
             if notes:
                 store.write(f"quiz/current_affairs/{ca_day}.json",
                             {"schema": 1, "date": ca_day, "notes": notes, "questions": questions})
