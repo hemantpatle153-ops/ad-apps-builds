@@ -1,6 +1,6 @@
 # Feeds: Vacancy Bell + Roz Quiz content
 
-`.github/workflows/feeds.yml` runs every 15 minutes on GitHub Actions and
+`.github/workflows/feeds.yml` runs every 15 minutes (at :07, :22, :37 and :52) on GitHub Actions and
 publishes JSON to the `feed-data` branch. The format is in [SCHEMA.md](SCHEMA.md).
 
 ## Setup (once)
