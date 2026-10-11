@@ -220,18 +220,46 @@ def test_quiz_day_one_and_two(tmp_path):
     assert idx["bankDay"] == "2026-10-06" and len(idx["banks"]) == len(quiz.BANK_SUBJECTS)
     assert all(b["count"] == 10 for b in idx["banks"])
     assert idx["daily"] == ["2026-10-06"], "70 bank questions are enough for a quiz"
-    # next day: yesterday's PIB releases become current affairs
-    day2 = day1 + dt.timedelta(days=1)
-    main_mod.run_quiz(store, llm, FakeFetcher(pages), [CA_SRC], day2, status := {})
+    # first day: no older day exists, so today's releases so far become current affairs
     ca = store.read("quiz/current_affairs/2026-10-06.json")
     assert len(ca["notes"]) == 1 and len(ca["questions"]) == 2
     assert all(question_errors(x) == [] for x in ca["questions"])
+    assert idx["currentAffairs"] == ["2026-10-06"]
+    d1 = store.read("quiz/daily/2026-10-06.json")
+    assert sum(x["subject"] == "current_affairs" for x in d1["questions"]) == 2
+    # next day: that file is kept, and the daily quiz does not repeat its questions
+    day2 = day1 + dt.timedelta(days=1)
+    n = len(llm.calls)
+    main_mod.run_quiz(store, llm, FakeFetcher(pages), [CA_SRC], day2, status := {})
+    assert not any(c[0].startswith(quiz.CA_PICK_SYSTEM[:40]) for c in llm.calls[n:])
     idx = store.read("quiz/index.json")
     assert idx["currentAffairs"] == ["2026-10-06"] and idx["daily"] == ["2026-10-07", "2026-10-06"]
     d2 = store.read("quiz/daily/2026-10-07.json")
-    assert sum(x["subject"] == "current_affairs" for x in d2["questions"]) == 2
-    d1 = store.read("quiz/daily/2026-10-06.json")
     assert not {x["id"] for x in d1["questions"]} & {x["id"] for x in d2["questions"]}
+
+
+def test_quiz_yesterday_becomes_current_affairs(tmp_path):
+    store = Store(tmp_path)
+    store.save_quiz_index({"currentAffairs": ["2026-10-01"]}, now="2026-10-01T00:00:00Z")
+    pages = {CA_SRC.url: RSS, "https://pib.gov.in/PressReleaseIframePage.aspx?PRID=2001": release_page()}
+    day1 = dt.datetime(2026, 10, 6, 4, 0, tzinfo=dt.timezone.utc)
+    llm = quiz_llm()
+    main_mod.run_quiz(store, llm, FakeFetcher(pages), [CA_SRC], day1, {})
+    assert not store.exists("quiz/current_affairs/2026-10-06.json"), "only the first file may use today"
+    main_mod.run_quiz(store, llm, FakeFetcher(pages), [CA_SRC], day1 + dt.timedelta(days=1), {})
+    ca = store.read("quiz/current_affairs/2026-10-06.json")
+    assert len(ca["notes"]) == 1 and len(ca["questions"]) == 2
+    assert "2026-10-06" in store.read("quiz/index.json")["currentAffairs"]
+    d2 = store.read("quiz/daily/2026-10-07.json")
+    assert sum(x["subject"] == "current_affairs" for x in d2["questions"]) == 2
+
+
+def test_bad_rss_status_is_reported(tmp_path):
+    status = {}
+    denied = Page(CA_SRC.url, 403, "text/html", b"<html>Access Denied</html>")
+    main_mod.run_quiz(Store(tmp_path), quiz_llm(), FakeFetcher({CA_SRC.url: denied}),
+                      [CA_SRC], NOW, status)
+    assert status["quiz"]["rss:pib"] == "error: HTTP 403"
 
 
 def test_quiz_rerun_same_day_is_cheap(tmp_path):

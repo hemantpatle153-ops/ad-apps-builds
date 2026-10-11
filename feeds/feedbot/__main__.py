@@ -143,6 +143,34 @@ def _prid(url: str) -> str | None:
     return m.group(1) if m else None
 
 
+def _write_current_affairs(store: Store, llm: Llm, fetcher: Fetcher, day: str,
+                           day_items: list[tuple[str, Any]]) -> dict[str, Any]:
+    report = quiz_mod.Report()
+    listing = "\n".join(f"{k}: {v['title']}" for k, v in day_items[:120])
+    pick = llm.json(quiz_mod.CA_PICK_SYSTEM, f"Pick up to {CA_PER_DAY} ids:\n{listing}").get("pick") or []
+    chosen = [(k, v) for k, v in day_items if k in {str(p) for p in pick}][:CA_PER_DAY]
+    notes, questions = [], []
+    for i, (k, v) in enumerate(chosen):
+        try:
+            body, _ = document_text(fetcher.get(v["url"]))
+        except Exception as e:
+            report.reject(f"fetch {v['url']}: {str(e)[:80]}")
+            continue
+        if len(body) < 200:
+            report.reject(f"release {k} too short")
+            continue
+        note, kept = quiz_mod.current_affairs_item(llm, title=v["title"], url=v["url"], text=body,
+                                                   date=day, index=i + 1, report=report)
+        if note:
+            notes.append(note)
+        questions += [q for q in kept if not question_errors(q)]
+    if notes:
+        store.write(f"quiz/current_affairs/{day}.json",
+                    {"schema": 1, "date": day, "notes": notes, "questions": questions})
+    return {"day": day, "notes": len(notes), "questions": len(questions), "rejected": report.rejected,
+            "reasons": report.reasons[:30]}
+
+
 def run_quiz(store: Store, llm: Llm, fetcher: Fetcher, ca_sources: list[Source], now: dt.datetime,
              status: dict[str, Any], *, deadline: float | None = None) -> None:
     today = quiz_mod.today_ist(now)
@@ -153,6 +181,8 @@ def run_quiz(store: Store, llm: Llm, fetcher: Fetcher, ca_sources: list[Source],
     for src in ca_sources:
         try:
             page = fetcher.get(src.url)
+            if page.status >= 400:
+                raise RuntimeError(f"HTTP {page.status}")
             items = _rss_items(page.text())
             qs[f"rss:{src.id}"] = len(items)
             for title, link in items:
@@ -165,36 +195,21 @@ def run_quiz(store: Store, llm: Llm, fetcher: Fetcher, ca_sources: list[Source],
     store.write("state/pib.json", pib)
 
     idx = store.quiz_index()
-    # 2. yesterday's current affairs, written once
+    # 2. yesterday's current affairs, written once. The very first time there
+    # is no older day to show, so today's releases so far are used instead.
     yday = (dt.date.fromisoformat(today) - dt.timedelta(days=1)).isoformat()
-    if not store.exists(f"quiz/current_affairs/{yday}.json") and not _out_of_time(deadline):
-        day_items = [(k, v) for k, v in pib.items() if v.get("day") == yday]
+    for day in (yday, today):
+        if day == today and (idx.get("currentAffairs") or idx.get("caFirstTry") == today):
+            break
+        if store.exists(f"quiz/current_affairs/{day}.json") or _out_of_time(deadline):
+            continue
+        day_items = [(k, v) for k, v in pib.items() if v.get("day") == day]
         if day_items:
-            report = quiz_mod.Report()
-            listing = "\n".join(f"{k}: {v['title']}" for k, v in day_items[:120])
-            pick = llm.json(quiz_mod.CA_PICK_SYSTEM, f"Pick up to {CA_PER_DAY} ids:\n{listing}").get("pick") or []
-            chosen = [(k, v) for k, v in day_items if k in {str(p) for p in pick}][:CA_PER_DAY]
-            notes, questions = [], []
-            for i, (k, v) in enumerate(chosen):
-                try:
-                    body, _ = document_text(fetcher.get(v["url"]))
-                except Exception as e:
-                    report.reject(f"fetch {v['url']}: {str(e)[:80]}")
-                    continue
-                if len(body) < 200:
-                    report.reject(f"release {k} too short")
-                    continue
-                note, kept = quiz_mod.current_affairs_item(llm, title=v["title"], url=v["url"], text=body,
-                                                           date=yday, index=i + 1, report=report)
-                if note:
-                    notes.append(note)
-                questions += [q for q in kept if not question_errors(q)]
-            if notes:
-                store.write(f"quiz/current_affairs/{yday}.json",
-                            {"schema": 1, "date": yday, "notes": notes, "questions": questions})
-                idx.setdefault("currentAffairs", []).append(yday)
-            qs["ca"] = {"notes": len(notes), "questions": len(questions), "rejected": report.rejected,
-                        "reasons": report.reasons[:30]}
+            qs["ca"] = _write_current_affairs(store, llm, fetcher, day, day_items)
+            if day == today:
+                idx["caFirstTry"] = today  # one try a day until the first file exists
+            if qs["ca"]["notes"]:
+                idx.setdefault("currentAffairs", []).append(day)
     store.save_quiz_index(idx, now=_ts(now))
     # 3. grow the subject banks a little every day
     if idx.get("bankDay") != today and not _out_of_time(deadline):
