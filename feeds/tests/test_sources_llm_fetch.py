@@ -46,7 +46,26 @@ DROP = [
     ("Login", "https://upsconline.nic.in/login"),
     ("Archive", "https://upsc.gov.in/archive"),
     ("Web Information Manager", "https://upsc.gov.in/wim"),
+    # menus seen on the live sites
+    ("{{'ExaminationOnly_HM' | translate }}", "https://uppsc.up.nic.in/#/exam"),
+    ("Advertise on EN test", "https://employmentnews.gov.in/NewEmp/Advertise.aspx"),
+    ("Web Advertisement", "https://employmentnews.gov.in/NewEmp/WebAdvt.aspx"),
+    ("e-Employment News Subscription", "https://employmentnews.gov.in/NewEmp/Subscribe.aspx"),
+    ("How do You Apply?", "https://opportunities.rbi.org.in/Scripts/HowToApply.aspx"),
+    ("Recruitment", "https://opportunities.rbi.org.in/Scripts/Recruitment.aspx"),
+    ("Results", "https://opportunities.rbi.org.in/Scripts/Results.aspx"),
+    ("Call Letters", "https://opportunities.rbi.org.in/Scripts/CallLetters.aspx"),
+    ("Vacancies", "https://opportunities.rbi.org.in/Scripts/Vacancies.aspx"),
 ]
+
+
+@pytest.mark.parametrize("text,url", [
+    ("Results", "https://opportunities.rbi.org.in/docs/result.pdf"),
+    ("Result 2026", "https://upsc.gov.in/result-2026"),
+    ("Recruitment of Grade B Officers", "https://opportunities.rbi.org.in/Scripts/Vacancies.aspx?id=4512"),
+])
+def test_short_labels_kept_when_document_or_specific(text, url):
+    assert is_candidate(text, url, SRC)
 
 
 @pytest.mark.parametrize("text,url", KEEP)
