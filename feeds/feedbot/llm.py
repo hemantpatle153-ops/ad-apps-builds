@@ -48,6 +48,14 @@ class LlmError(RuntimeError):
     pass
 
 
+class LlmReplyError(LlmError):
+    """The model answered, but not with usable JSON; only that one item fails."""
+
+
+# a backslash JSON does not allow (models write \( or a Windows path); doubled, it is kept as text
+_BAD_ESCAPE = re.compile(r'(?<!\\)((?:\\\\)*)\\(?![\"\\/bfnrtu])')
+
+
 class Llm(Protocol):
     extract_model: str
     verify_model: str
@@ -67,13 +75,17 @@ def parse_json_reply(text: str) -> dict[str, Any]:
     except json.JSONDecodeError:
         start, end = t.find("{"), t.rfind("}")
         if start < 0 or end <= start:
-            raise LlmError("reply has no JSON object") from None
+            raise LlmReplyError("reply has no JSON object") from None
+        t = t[start:end + 1]
         try:
-            value = json.loads(t[start:end + 1])
+            value = json.loads(t)
         except json.JSONDecodeError as e:
-            raise LlmError(f"reply JSON is invalid: {e}") from None
+            try:
+                value = json.loads(_BAD_ESCAPE.sub(r"\1\\\\", t))
+            except json.JSONDecodeError:
+                raise LlmReplyError(f"reply JSON is invalid: {e}") from None
     if not isinstance(value, dict):
-        raise LlmError("reply JSON is not an object")
+        raise LlmReplyError("reply JSON is not an object")
     return value
 
 
@@ -232,9 +244,9 @@ class Claude(_Client):
         u = reply.usage
         self.usage.add(model, getattr(u, "input_tokens", 0), getattr(u, "output_tokens", 0))
         if reply.stop_reason == "refusal":
-            raise LlmError("Claude declined this request")
+            raise LlmReplyError("Claude declined this request")
         if reply.stop_reason == "max_tokens":
-            raise LlmError("Claude reply was cut off (max_tokens)")
+            raise LlmReplyError("Claude reply was cut off (max_tokens)")
         text = "".join(b.text for b in reply.content if b.type == "text")
         return parse_json_reply(text)
 

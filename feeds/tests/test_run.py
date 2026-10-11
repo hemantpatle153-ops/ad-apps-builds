@@ -6,9 +6,9 @@ import pytest
 
 from conftest import NOTICE, NOW, FakeLlm, good_extraction
 from feedbot import __main__ as main_mod
-from feedbot import quiz
+from feedbot import jobs, quiz
 from feedbot.fetch import Page
-from feedbot.llm import LlmError
+from feedbot.llm import LlmError, LlmReplyError
 from feedbot.sources import Source, link_id
 from feedbot.store import MAX_INDEX, Store
 from feedbot.validate import post_errors, question_errors
@@ -149,6 +149,49 @@ def test_llm_outage_stops_run_but_keeps_progress(tmp_path):
     store = Store(tmp_path)
     with pytest.raises(LlmError):
         main_mod.run_jobs(store, Broken(), FakeFetcher({SRC.url: page_html(1)}), [SRC], NOW, fresh_status())
+
+
+def test_garbled_reply_skips_that_notice_and_retries_it_once(tmp_path):
+    class Garbled(FakeLlm):
+        def __init__(self, bad, **k):
+            super().__init__(**k)
+            self.bad = bad
+
+        def json(self, system, user, **k):
+            if self.bad and system == jobs.EXTRACT_SYSTEM and "notice-0" in user:
+                self.calls.append((system, user, None))
+                raise LlmReplyError("reply JSON is invalid")
+            return super().json(system, user, **k)
+
+    store = Store(tmp_path)
+    key = link_id("https://ssc.gov.in/n/notice-0.pdf")
+    run = lambda llm, n=2: main_mod.run_jobs(store, llm, FakeFetcher({SRC.url: page_html(n)}), [SRC], NOW, fresh_status())
+    status = fresh_status()
+    main_mod.run_jobs(store, Garbled(True, extract=[make_extract(1)]), FakeFetcher({SRC.url: page_html(2)}), [SRC], NOW, status)
+    assert status["sources"]["ssc"]["llmErrors"] == 1
+    assert len(store.read("jobs/index.json")["posts"]) == 1  # the other notice still went out
+    assert store.read("state/seen.json")[key]["status"] == "retry"
+    run(Garbled(True, extract=[make_extract(1)]))
+    assert store.read("state/seen.json")[key]["status"] == "error"
+    llm = Garbled(True, extract=[make_extract(1)])
+    run(llm)
+    assert not llm.calls  # given up after two tries
+
+
+def test_garbled_reply_then_good_reply_publishes(tmp_path):
+    class Once(FakeLlm):
+        failed = False
+
+        def json(self, system, user, **k):
+            if not Once.failed and system == jobs.EXTRACT_SYSTEM:
+                Once.failed = True
+                raise LlmReplyError("reply has no JSON object")
+            return super().json(system, user, **k)
+
+    store = Store(tmp_path)
+    for _ in range(2):
+        main_mod.run_jobs(store, Once(extract=[make_extract()]), FakeFetcher({SRC.url: page_html(1)}), [SRC], NOW, fresh_status())
+    assert list(store.read("state/seen.json").values())[0]["status"] == "published"
 
 
 def test_index_is_capped(tmp_path):

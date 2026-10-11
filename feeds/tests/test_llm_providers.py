@@ -407,3 +407,18 @@ def test_env_helper(monkeypatch):
     assert llm._env("X_TEST_SETTING", "d") == "v"
     monkeypatch.delenv("X_TEST_SETTING")
     assert llm._env("X_TEST_SETTING", "d") == "d"
+
+
+@pytest.mark.parametrize("text, expected", [
+    (r'{"a": "x \( y"}', "x \\( y"),
+    (r'{"a": "\\\("}', "\\\\("),
+    (r'{"a": "ok \" é \\"}', 'ok " é \\'),
+    ('Here: {"a": "line \\d+"} done', "line \\d+"),
+])
+def test_stray_backslashes_in_reply_are_kept_as_text(text, expected):
+    assert llm.parse_json_reply(text)["a"] == expected
+
+
+def test_garbled_reply_is_a_reply_error():
+    with pytest.raises(llm.LlmReplyError):
+        llm.parse_json_reply('{"a": "unterminated}')

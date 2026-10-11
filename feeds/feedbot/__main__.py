@@ -17,7 +17,7 @@ from typing import Any
 from . import jobs as jobs_mod
 from . import quiz as quiz_mod
 from .fetch import Fetcher, document_text, html_links
-from .llm import Llm, LlmError, make_llm
+from .llm import Llm, LlmError, LlmReplyError, make_llm
 from .sources import Source, is_candidate, link_id, load_sources
 from .store import Store
 from .validate import post_errors, question_errors
@@ -25,6 +25,7 @@ from .validate import post_errors, question_errors
 BOOTSTRAP_KEEP = 6          # first run of a source: process only its newest few notices
 MAX_NEW_PER_SOURCE = 5
 MAX_NEW_PER_RUN = 25
+LLM_TRIES = 2               # a notice whose AI answer comes back garbled this many times is given up
 CA_PER_DAY = 8
 BANK_PER_SUBJECT_PER_DAY = 10
 RUN_MINUTES = 20           # stop starting new AI work after this, so the run can publish
@@ -70,6 +71,10 @@ def ssc_links(text: str) -> list[tuple[str, str]]:
     return out
 
 
+def _retry(entry: dict[str, Any]) -> bool:
+    return entry.get("status") == "retry"
+
+
 def run_jobs(store: Store, llm: Llm, fetcher: Fetcher, sources: list[Source], now: dt.datetime,
              status: dict[str, Any], *, max_new: int = MAX_NEW_PER_RUN, deadline: float | None = None) -> None:
     seen: dict[str, Any] = store.read("state/seen.json") or {}
@@ -94,7 +99,7 @@ def run_jobs(store: Store, llm: Llm, fetcher: Fetcher, sources: list[Source], no
             st["error"] = str(e)[:200]
             continue
         first_time = not any(v.get("source") == src.id for v in seen.values())
-        fresh = [(t, u) for t, u in cands if link_id(u) not in seen]
+        fresh = [(t, u) for t, u in cands if link_id(u) not in seen or _retry(seen[link_id(u)])]
         if first_time:
             for t, u in fresh[BOOTSTRAP_KEEP:]:
                 seen[link_id(u)] = {"source": src.id, "url": u, "status": "skipped", "first": _ts(now)}
@@ -116,6 +121,12 @@ def run_jobs(store: Store, llm: Llm, fetcher: Fetcher, sources: list[Source], no
                 budget -= 1
                 out = jobs_mod.process_notice(llm, src, notice_url=doc.url, link_text=text, text=body,
                                               links={u for _, u in doc_links}, now=now)
+            except LlmReplyError as e:  # a garbled answer about one notice; tried again next run
+                tries = int(seen.get(key, {}).get("tries", 0)) + 1
+                entry.update(status="retry" if tries < LLM_TRIES else "error", error=str(e)[:200], tries=tries)
+                seen[key] = entry
+                st["llmErrors"] = st.get("llmErrors", 0) + 1
+                continue
             except LlmError:
                 raise
             except Exception as e:
@@ -195,7 +206,11 @@ def run_quiz(store: Store, llm: Llm, fetcher: Fetcher, ca_sources: list[Source],
         if day_items:
             report = quiz_mod.Report()
             listing = "\n".join(f"{k}: {v['title']}" for k, v in day_items[:120])
-            pick = llm.json(quiz_mod.CA_PICK_SYSTEM, f"Pick up to {CA_PER_DAY} ids:\n{listing}").get("pick") or []
+            try:
+                pick = llm.json(quiz_mod.CA_PICK_SYSTEM, f"Pick up to {CA_PER_DAY} ids:\n{listing}").get("pick") or []
+            except LlmReplyError as e:  # nothing read, so the day is tried again next run
+                report.reject(f"pick: {str(e)[:80]}")
+                pick = []
             chosen = [(k, v) for k, v in day_items if k in {str(p) for p in pick}][:CA_PER_DAY]
             notes, questions, read = [], [], 0
             for i, (k, v) in enumerate(chosen):
@@ -208,8 +223,12 @@ def run_quiz(store: Store, llm: Llm, fetcher: Fetcher, ca_sources: list[Source],
                     report.reject(f"release {k} too short")
                     continue
                 read += 1
-                note, kept = quiz_mod.current_affairs_item(llm, title=v["title"], url=v["url"], text=body,
-                                                           date=ca_day, index=i + 1, report=report)
+                try:
+                    note, kept = quiz_mod.current_affairs_item(llm, title=v["title"], url=v["url"], text=body,
+                                                               date=ca_day, index=i + 1, report=report)
+                except LlmReplyError as e:
+                    report.reject(f"release {k}: {str(e)[:80]}")
+                    continue
                 if note:
                     notes.append(note)
                 questions += [q for q in kept if not question_errors(q)]
