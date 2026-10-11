@@ -22,8 +22,11 @@ gcloud projects add-iam-policy-binding "$PROJECT" --condition=None --quiet \
   --member="serviceAccount:${PN}-compute@developer.gserviceaccount.com" --role=roles/run.builder >/dev/null
 
 # keep the same token on re-deploys so the GitHub secret stays valid
-TOKEN="$(gcloud run services describe "$SERVICE" --region "$REGION" \
-  --format='value(spec.template.spec.containers[0].env[?name=="RELAY_TOKEN"].value)' 2>/dev/null || true)"
+# (gcloud's --format has no [?name==...] filter, so read the JSON instead)
+TOKEN="$(gcloud run services describe "$SERVICE" --region "$REGION" --format=json 2>/dev/null | python3 -c '
+import json, sys
+env = json.load(sys.stdin)["spec"]["template"]["spec"]["containers"][0].get("env", [])
+print(next((e.get("value", "") for e in env if e.get("name") == "RELAY_TOKEN"), ""))' 2>/dev/null || true)"
 TOKEN="${TOKEN:-$(head -c 32 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 40)}"
 
 gcloud run deploy "$SERVICE" --source . --region "$REGION" --allow-unauthenticated \
