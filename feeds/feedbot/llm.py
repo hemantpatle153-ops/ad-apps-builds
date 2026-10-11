@@ -28,14 +28,20 @@ import requests
 EXTRACT = "extract"
 VERIFY = "verify"
 
-BASE_URL = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
+
+def _env(name: str, default: str) -> str:
+    """A setting from the environment; unset GitHub variables arrive as ""."""
+    return os.environ.get(name, "").strip() or default
+
+
+BASE_URL = _env("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
 # deepseek-flash answers the old deepseek-chat name too.
-DEEPSEEK_EXTRACT_MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-flash")
-DEEPSEEK_VERIFY_MODEL = os.environ.get("DEEPSEEK_VERIFY_MODEL", "deepseek-v4-pro")
-CLAUDE_EXTRACT_MODEL = os.environ.get("CLAUDE_MODEL", "claude-haiku-5-5")
-CLAUDE_VERIFY_MODEL = os.environ.get("CLAUDE_VERIFY_MODEL", "claude-opus-5-5")
-GEMINI_EXTRACT_MODEL = os.environ.get("GEMINI_MODEL", "gemini-flash-latest")
-GEMINI_VERIFY_MODEL = os.environ.get("GEMINI_VERIFY_MODEL", "gemini-flash-latest")
+DEEPSEEK_EXTRACT_MODEL = _env("DEEPSEEK_MODEL", "deepseek-flash")
+DEEPSEEK_VERIFY_MODEL = _env("DEEPSEEK_VERIFY_MODEL", "deepseek-v4-pro")
+CLAUDE_EXTRACT_MODEL = _env("CLAUDE_MODEL", "claude-haiku-5-5")
+CLAUDE_VERIFY_MODEL = _env("CLAUDE_VERIFY_MODEL", "claude-opus-5-5")
+GEMINI_EXTRACT_MODEL = _env("GEMINI_MODEL", "gemini-flash-latest")
+GEMINI_VERIFY_MODEL = _env("GEMINI_VERIFY_MODEL", "gemini-flash-latest")
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
 class LlmError(RuntimeError):
