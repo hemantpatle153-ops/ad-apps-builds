@@ -370,3 +370,21 @@ def test_make_llm_reads_process_env(monkeypatch):
 def test_make_llm_passes_the_key():
     c = llm.make_llm({"GEMINI_API_KEY": "secret-g"})
     assert c._key == "secret-g"
+
+
+def test_blank_model_variables_fall_back_to_defaults():
+    # Actions passes unset repo variables as empty strings.
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    names = ("CLAUDE_MODEL", "CLAUDE_VERIFY_MODEL", "GEMINI_MODEL", "GEMINI_VERIFY_MODEL",
+             "DEEPSEEK_MODEL", "DEEPSEEK_VERIFY_MODEL", "DEEPSEEK_BASE_URL")
+    env = {**os.environ, **{n: "" for n in names}}
+    code = ("from feedbot import llm as m; "
+            "print(all([m.CLAUDE_EXTRACT_MODEL, m.CLAUDE_VERIFY_MODEL, m.GEMINI_EXTRACT_MODEL, "
+            "m.GEMINI_VERIFY_MODEL, m.DEEPSEEK_EXTRACT_MODEL, m.DEEPSEEK_VERIFY_MODEL, m.BASE_URL]))")
+    out = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True,
+                         cwd=Path(__file__).resolve().parents[1], check=True)
+    assert out.stdout.strip() == "True"
