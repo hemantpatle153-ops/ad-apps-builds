@@ -45,7 +45,7 @@ def load_sources(path: Path = SOURCES_FILE) -> tuple[list[Source], list[Source]]
 
 
 _KEEP = re.compile(
-    r"recruit|vacanc|advertis|advt|notification|notice|employment|walk.?in|"
+    r"recruit|vacanc|advertis|advt|notification|notice|employment|walk.?in|apprentic|engagement|"
     r"admit|e-?admit|call letter|hall ticket|result|marks|answer.?key|cut.?off|syllabus|"
     r"examination|exam |exam$|interview|selection|apply|application|post of|posts|"
     r"भर्ती|विज्ञापन|परिणाम|प्रवेश पत्र|उत्तर कुंजी|परीक्षा|अधिसूचना|रिक्ति|पाठ्यक्रम|साक्षात्कार")
@@ -54,9 +54,14 @@ _DROP = re.compile(
     r"screen reader|skip to|privacy|terms|disclaimer|copyright|hyperlink|archive|gallery|photo|"
     r"video|twitter|facebook|youtube|instagram|linkedin|telephone|directory|annual report|"
     r"citizen charter|grievance|accessibility|web information manager)\b")
-_DOC = re.compile(r"\.(pdf|docx?)(\?|$)", re.I)
-_MENU = re.compile(r"advertise on|web advertisement|subscription|how (do|to) (you )?apply|newsletter|"
-                   r"e-?paper|buy|price list")
+# Liferay (SBI) serves documents as /documents/.../name.pdf/<uuid>?t=...
+_DOC = re.compile(r"\.(pdf|docx?)(\?|/|$)", re.I)
+_MENU = re.compile(r"advertise on|web advertisement|subscri|how (do|to) (you )?apply|newsletter|"
+                   r"e-?paper|buy|price list|biodata|negotiation form|undertaking format|scribe guidelines|"
+                   r"business policy|discount structure|advertisement policy|notice for (advertisers|subscribers)")
+# Pagination on vacancy listings (DRDO): "Current page 1", "Page 2", "Next".
+_PAGER = re.compile(r"^(current page|go to page|page \d+|next|previous|prev|first|last|view all|view archive|"
+                    r"know more about)\b|^\d+$")
 
 
 def is_candidate(text: str, url: str, source: Source) -> bool:
@@ -66,8 +71,8 @@ def is_candidate(text: str, url: str, source: Source) -> bool:
     host = urlparse(url).netloc.lower()
     if _DROP.search(t) and not _KEEP.search(t):
         return False
-    if "{{" in text or "}}" in text or _MENU.search(t):
-        return False  # unrendered page templates and site menus
+    if "{{" in text or "}}" in text or _MENU.search(t) or _PAGER.search(t):
+        return False  # unrendered page templates, site menus and pagination
     doc = bool(_DOC.search(path))
     if not doc and len(t.split()) <= 3 and not re.search(r"\d", t):
         return False  # short menu labels such as "Results" or "Call Letters"
@@ -83,8 +88,8 @@ def is_candidate(text: str, url: str, source: Source) -> bool:
 
 
 def link_id(url: str) -> str:
-    """Stable key for a link (query order and fragments ignored)."""
+    """Stable key for a link (query order, fragments and SBI's ?t=<upload time> ignored)."""
     p = urlparse(url.strip())
-    q = "&".join(sorted(x for x in p.query.split("&") if x))
+    q = "&".join(sorted(x for x in p.query.split("&") if x and not x.startswith("t=")))
     key = f"{p.netloc.lower()}{p.path}?{q}"
     return hashlib.sha1(key.encode()).hexdigest()[:16]
