@@ -142,7 +142,10 @@ def solve(llm: llm_mod.Llm, questions: list[dict[str, Any]], *, passage: str | N
 
 
 def _supported_by(text_en: str, quote: str, source: str) -> bool:
-    return all(n in numbers_in(quote) or quote_in_source(n, source) for n in numbers_in(text_en))
+    # Compare numbers as numbers: quote_in_source needs 4+ characters, so a
+    # true "3" or "18" taken from the release used to fail every note.
+    known = set(numbers_in(quote)) | set(numbers_in(source))
+    return all(n in known for n in numbers_in(text_en))
 
 
 def current_affairs_item(llm: llm_mod.Llm, *, title: str, url: str, text: str, date: str,

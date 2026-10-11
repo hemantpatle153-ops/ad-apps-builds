@@ -338,3 +338,11 @@ def test_clean_question_does_not_mutate_input():
     before = copy.deepcopy(raw)
     quiz.clean_question(raw, subject="science")
     assert raw == before
+
+
+def test_short_numbers_from_the_release_support_a_note():
+    src = "The Navy has inducted 18 new ships this year. INS Sahyadri arrived at Vladivostok on 9 October for a 3 day visit."
+    quote = "INS Sahyadri arrived at Vladivostok on 9 October"
+    assert quiz._supported_by("INS Sahyadri reached Vladivostok on 9 October for a 3-day visit.", quote, src)
+    assert quiz._supported_by("The Navy inducted 18 ships this year.", quote, src)
+    assert not quiz._supported_by("INS Sahyadri reached Vladivostok for a 7-day visit.", quote, src)
