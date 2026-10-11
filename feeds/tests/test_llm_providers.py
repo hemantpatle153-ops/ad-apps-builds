@@ -62,7 +62,7 @@ def _request():
 def test_claude_default_models():
     c, _ = claude()
     assert c.extract_model == "claude-haiku-5-5"
-    assert c.verify_model == "claude-opus-5-5"
+    assert c.verify_model == "claude-haiku-5-5"
     assert c.name == "claude"
 
 
@@ -77,7 +77,8 @@ def test_claude_extract_uses_extract_model_without_fallbacks():
     assert fake.beta.messages.calls == []
 
 
-def test_claude_verify_uses_opus_with_default_fallbacks():
+def test_claude_verify_uses_opus_with_default_fallbacks(monkeypatch):
+    monkeypatch.setattr(llm, "CLAUDE_VERIFY_MODEL", "claude-opus-5-5")
     c, fake = claude(reply('{"results": []}'))
     assert c.json("sys", "user", model=llm.VERIFY) == {"results": []}
     call = fake.beta.messages.calls[0]
@@ -123,13 +124,24 @@ def test_claude_other_models_use_plain_messages(model):
     assert fake.messages.calls[0]["model"] == model
 
 
-def test_claude_records_usage_per_model():
+def test_claude_records_usage_per_model(monkeypatch):
+    monkeypatch.setattr(llm, "CLAUDE_VERIFY_MODEL", "claude-opus-5-5")
     c, _ = claude(reply(usage=(100, 20)), reply(usage=(50, 10)))
     c.json("s", "u")
     c.json("s", "u", model=llm.VERIFY)
     assert c.usage.calls == 2
     assert c.usage.prompt_tokens == 150 and c.usage.completion_tokens == 30
     assert c.usage.by_model == {"claude-haiku-5-5": 1, "claude-opus-5-5": 1}
+    assert c.usage.tokens_by_model == {"claude-haiku-5-5": [100, 20], "claude-opus-5-5": [50, 10]}
+
+
+def test_claude_verify_on_haiku_still_uses_high_effort():
+    c, fake = claude(reply(), reply())
+    c.json("s", "u")
+    c.json("s", "u", model=llm.VERIFY)
+    assert [x["model"] for x in fake.calls] == ["claude-haiku-5-5", "claude-haiku-5-5"]
+    assert [x["output_config"]["effort"] for x in fake.calls] == ["medium", "high"]
+    assert c.usage.by_model == {"claude-haiku-5-5": 2}
 
 
 def test_claude_reads_only_text_blocks():
@@ -384,7 +396,7 @@ def test_blank_model_variables_fall_back_to_defaults():
             "llm.GEMINI_EXTRACT_MODEL, llm.DEEPSEEK_EXTRACT_MODEL, llm.BASE_URL)")
     out = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True,
                          cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))), check=True)
-    assert out.stdout.split() == ["claude-haiku-5-5", "claude-opus-5-5", "gemini-flash-latest",
+    assert out.stdout.split() == ["claude-haiku-5-5", "claude-haiku-5-5", "gemini-flash-latest",
                                   "deepseek-flash", "https://api.deepseek.com"]
 
 

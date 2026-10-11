@@ -39,7 +39,7 @@ BASE_URL = _env("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
 DEEPSEEK_EXTRACT_MODEL = _env("DEEPSEEK_MODEL", "deepseek-flash")
 DEEPSEEK_VERIFY_MODEL = _env("DEEPSEEK_VERIFY_MODEL", "deepseek-v4-pro")
 CLAUDE_EXTRACT_MODEL = _env("CLAUDE_MODEL", "claude-haiku-5-5")
-CLAUDE_VERIFY_MODEL = _env("CLAUDE_VERIFY_MODEL", "claude-opus-5-5")
+CLAUDE_VERIFY_MODEL = _env("CLAUDE_VERIFY_MODEL", "claude-haiku-5-5")  # cheap; set claude-opus-5-5 for a stronger check
 GEMINI_EXTRACT_MODEL = _env("GEMINI_MODEL", "gemini-flash-latest")
 GEMINI_VERIFY_MODEL = _env("GEMINI_VERIFY_MODEL", "gemini-flash-latest")
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
@@ -83,12 +83,17 @@ class Usage:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     by_model: dict[str, int] = field(default_factory=dict)
+    tokens_by_model: dict[str, list[int]] = field(default_factory=dict)  # model -> [in, out]
 
     def add(self, model: str, prompt_tokens: Any = 0, completion_tokens: Any = 0) -> None:
+        p, c = int(prompt_tokens or 0), int(completion_tokens or 0)
         self.calls += 1
         self.by_model[model] = self.by_model.get(model, 0) + 1
-        self.prompt_tokens += int(prompt_tokens or 0)
-        self.completion_tokens += int(completion_tokens or 0)
+        t = self.tokens_by_model.setdefault(model, [0, 0])
+        t[0] += p
+        t[1] += c
+        self.prompt_tokens += p
+        self.completion_tokens += c
 
 
 class _Client:
@@ -203,6 +208,7 @@ class Claude(_Client):
              max_tokens: int = 4000) -> dict[str, Any]:
         import anthropic
 
+        verifying = model == VERIFY
         model = self._model(model)
         params: dict[str, Any] = {
             "model": model,
@@ -210,7 +216,7 @@ class Claude(_Client):
             "system": system,
             "messages": [{"role": "user", "content": user}],
             # Fact checking is the point of the verifier; extraction is routine.
-            "output_config": {"effort": "high" if model == self.verify_model else "medium"},
+            "output_config": {"effort": "high" if verifying else "medium"},
         }
         try:
             if model in FALLBACK_MODELS:
