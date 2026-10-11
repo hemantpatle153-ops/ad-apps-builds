@@ -55,6 +55,8 @@ _DROP = re.compile(
     r"video|twitter|facebook|youtube|instagram|linkedin|telephone|directory|annual report|"
     r"citizen charter|grievance|accessibility|web information manager)\b")
 _DOC = re.compile(r"\.(pdf|docx?)(\?|$)", re.I)
+_MENU = re.compile(r"advertise on|web advertisement|subscription|how (do|to) (you )?apply|newsletter|"
+                   r"e-?paper|buy|price list")
 
 
 def is_candidate(text: str, url: str, source: Source) -> bool:
@@ -64,6 +66,11 @@ def is_candidate(text: str, url: str, source: Source) -> bool:
     host = urlparse(url).netloc.lower()
     if _DROP.search(t) and not _KEEP.search(t):
         return False
+    if "{{" in text or "}}" in text or _MENU.search(t):
+        return False  # unrendered page templates and site menus
+    doc = bool(_DOC.search(path))
+    if not doc and len(t.split()) <= 3 and not re.search(r"\d", t):
+        return False  # short menu labels such as "Results" or "Call Letters"
     if any(s in host for s in ("facebook.", "twitter.", "x.com", "youtube.", "instagram.", "linkedin.", "whatsapp.")):
         return False
     if not (host.endswith(".gov.in") or host.endswith(".nic.in") or host.endswith(".org.in")
